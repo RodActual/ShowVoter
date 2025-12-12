@@ -1,7 +1,7 @@
 // src/App.js
-import React from ‘react’;
-import WatchTogether from ‘./WatchTogether’;
-import ‘./App.css’;
+import React from 'react';
+import WatchTogether from '../WatchTogether.jsx';
+import '../App.css';
 
 function App() {
 return (
