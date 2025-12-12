@@ -13,10 +13,10 @@ import {
   deleteDoc 
 } from 'firebase/firestore';
 
-const COUPLE_ID = 'anthony-madison'; // Single shared couple ID
+const COUPLE_ID = 'pamrod'; // Single shared couple ID
 
 const WatchTogether = () => {
-  const [currentUser, setCurrentUser] = useState(null); // 'Anthony' or 'Madison'
+  const [currentUser, setCurrentUser] = useState(null); // 'Anthony' or 'Pam'
   const [showUserSelect, setShowUserSelect] = useState(false);
   
   // App state
@@ -116,7 +116,7 @@ const WatchTogether = () => {
       type: selectedShow.type,
       service: selectedService,
       anthonyPriority: currentUser === 'Anthony' ? 3 : 0,
-      madisonPriority: currentUser === 'Madison' ? 3 : 0,
+      pamPriority: currentUser === 'Pam' ? 3 : 0,
       tmdbId: selectedShow.tmdbId,
       mediaType: selectedShow.mediaType,
       posterPath: selectedShow.posterPath,
@@ -143,11 +143,11 @@ const WatchTogether = () => {
     setShowRatingModal(true);
   };
 
-  const handleSubmitRating = async (anthonyRating, madisonRating, episodes = []) => {
+  const handleSubmitRating = async (anthonyRating, pamRating, episodes = []) => {
     const watchedItem = {
       ...itemToRate,
       anthonyRating,
-      madisonRating,
+      pamRating,
       watchedDate: new Date().toISOString().split('T')[0],
       episodes: episodes.length > 0 ? episodes : undefined,
       ratedBy: currentUser,
@@ -180,7 +180,7 @@ const WatchTogether = () => {
       const showData = showDoc.data();
       const updatedEpisodes = showData.episodes.map(ep =>
         ep.num === episodeNum
-          ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'madisonRating']: newRating }
+          ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: newRating }
           : ep
       );
       
@@ -209,13 +209,13 @@ const WatchTogether = () => {
 
   const calculateAvgPriority = (item) => {
     const anthony = item.anthonyPriority || 0;
-    const madison = item.madisonPriority || 0;
+    const pam = item.pamPriority || 0;
     
-    if (anthony === 0 && madison === 0) return 0;
-    if (anthony === 0) return madison;
-    if (madison === 0) return anthony;
+    if (anthony === 0 && pam === 0) return 0;
+    if (anthony === 0) return pam;
+    if (pam === 0) return anthony;
     
-    return ((anthony + madison) / 2).toFixed(1);
+    return ((anthony + pam) / 2).toFixed(1);
   };
 
   const ToWatchCard = ({ item }) => {
@@ -275,11 +275,11 @@ const WatchTogether = () => {
             />
           </div>
           <div>
-            <div className="text-xs text-gray-400 mb-1">Madison's Priority</div>
+            <div className="text-xs text-gray-400 mb-1">Pam's Priority</div>
             <StarRating 
-              rating={item.madisonPriority || 0} 
+              rating={item.pamPriority || 0} 
               editable={editMode}
-              onRate={(rating) => handleUpdatePriority(item.id, 'madisonPriority', rating)}
+              onRate={(rating) => handleUpdatePriority(item.id, 'pamPriority', rating)}
             />
           </div>
         </div>
@@ -307,8 +307,8 @@ const WatchTogether = () => {
   const WatchedCard = ({ item }) => {
     const isExpanded = expandedShow === item.id;
     const anthony = item.anthonyRating || 0;
-    const madison = item.madisonRating || 0;
-    const avgRating = madison ? ((anthony + madison) / 2).toFixed(1) : anthony;
+    const pam = item.pamRating || 0;
+    const avgRating = pam ? ((anthony + pam) / 2).toFixed(1) : anthony;
     const [editEpisodes, setEditEpisodes] = useState(false);
     
     return (
@@ -356,8 +356,8 @@ const WatchTogether = () => {
             <StarRating rating={anthony} />
           </div>
           <div>
-            <div className="text-xs text-gray-400 mb-1">Madison's Rating</div>
-            <StarRating rating={madison} />
+            <div className="text-xs text-gray-400 mb-1">Pam's Rating</div>
+            <StarRating rating={pam} />
           </div>
         </div>
 
@@ -392,7 +392,7 @@ const WatchTogether = () => {
                         <div className="text-sm text-gray-400">{ep.title}</div>
                       </div>
                       <div className="text-sm font-semibold text-gray-300">
-                        {(((ep.anthonyRating || 0) + (ep.madisonRating || 0)) / 2).toFixed(1)}/10
+                        {(((ep.anthonyRating || 0) + (ep.pamRating || 0)) / 2).toFixed(1)}/10
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
@@ -407,13 +407,13 @@ const WatchTogether = () => {
                         />
                       </div>
                       <div>
-                        <div className="text-gray-400 mb-1">Madison: {ep.madisonRating || 0}/10</div>
+                        <div className="text-gray-400 mb-1">Pam: {ep.pamRating || 0}/10</div>
                         <StarRating 
-                          rating={Math.round((ep.madisonRating || 0) / 2)} 
+                          rating={Math.round((ep.pamRating || 0) / 2)} 
                           maxStars={5}
                           size={16}
                           editable={editEpisodes}
-                          onRate={(rating) => handleUpdateEpisodeRating(item.id, ep.num, 'Madison', rating * 2)}
+                          onRate={(rating) => handleUpdateEpisodeRating(item.id, ep.num, 'Pam', rating * 2)}
                         />
                       </div>
                     </div>
@@ -429,7 +429,7 @@ const WatchTogether = () => {
 
   const RatingModal = () => {
     const [anthonyRating, setAnthonyRating] = useState(3);
-    const [madisonRating, setMadisonRating] = useState(3);
+    const [pamRating, setPamRating] = useState(3);
     const [numEpisodes, setNumEpisodes] = useState(0);
     const [episodes, setEpisodes] = useState([]);
     const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -447,7 +447,7 @@ const WatchTogether = () => {
           setEpisodes(seasonData.episodes.map(ep => ({
             ...ep,
             anthonyRating: 5,
-            madisonRating: 5
+            pamRating: 5
           })));
         }
       } catch (error) {
@@ -462,7 +462,7 @@ const WatchTogether = () => {
         num: i + 1,
         title: `Episode ${i + 1}`,
         anthonyRating: 5,
-        madisonRating: 5
+        pamRating: 5
       }));
       setEpisodes(newEps);
     };
@@ -470,7 +470,7 @@ const WatchTogether = () => {
     const handleEpisodeRatingChange = (epNum, user, rating) => {
       setEpisodes(episodes.map(ep =>
         ep.num === epNum
-          ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'madisonRating']: rating }
+          ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: rating }
           : ep
       ));
     };
@@ -497,8 +497,8 @@ const WatchTogether = () => {
                   <StarRating rating={anthonyRating} editable onRate={setAnthonyRating} size={28} />
                 </div>
                 <div>
-                  <div className="text-sm text-gray-300 mb-2">Madison's Rating</div>
-                  <StarRating rating={madisonRating} editable onRate={setMadisonRating} size={28} />
+                  <div className="text-sm text-gray-300 mb-2">Pam's Rating</div>
+                  <StarRating rating={pamRating} editable onRate={setPamRating} size={28} />
                 </div>
               </div>
             </div>
@@ -549,13 +549,13 @@ const WatchTogether = () => {
                             />
                           </div>
                           <div>
-                            <div className="text-gray-300 mb-1">Madison: {ep.madisonRating}/10</div>
+                            <div className="text-gray-300 mb-1">Pam: {ep.pamRating}/10</div>
                             <StarRating
-                              rating={Math.round(ep.madisonRating / 2)}
+                              rating={Math.round(ep.pamRating / 2)}
                               maxStars={5}
                               size={18}
                               editable
-                              onRate={(rating) => handleEpisodeRatingChange(ep.num, 'Madison', rating * 2)}
+                              onRate={(rating) => handleEpisodeRatingChange(ep.num, 'Pam', rating * 2)}
                             />
                           </div>
                         </div>
@@ -574,7 +574,7 @@ const WatchTogether = () => {
           </div>
 
           <button
-            onClick={() => handleSubmitRating(anthonyRating, madisonRating, episodes)}
+            onClick={() => handleSubmitRating(anthonyRating, pamRating, episodes)}
             className="w-full mt-6 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium"
           >
             Save & Mark as Watched
@@ -770,10 +770,10 @@ const WatchTogether = () => {
             Anthony
           </button>
           <button
-            onClick={() => handleUserSelect('Madison')}
+            onClick={() => handleUserSelect('Pam')}
             className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-4 px-6 rounded-lg hover:from-purple-700 hover:to-purple-800 font-semibold text-lg transition"
           >
-            Madison
+            Pam
           </button>
         </div>
       </div>
