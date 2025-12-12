@@ -1,6 +1,8 @@
 // src/firebase.js
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 // Replace this with your Firebase config from the Firebase Console
 const firebaseConfig = {
@@ -17,5 +19,7 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore only (no auth needed)
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const functions = getFunctions(app);
 
 export default app;
