@@ -678,4 +678,192 @@ const WatchTogether = () => {
                   <p className="text-sm text-gray-400">{selectedShow.year} • {selectedShow.type}</p>
                   {selectedShow.rating && (
                     <div className="flex items-center gap-1 mt-1">
-                      <Star size={14} className="fill-yellow-400 text-yellow
+                      <Star size={14} className="fill-yellow-400 text-yellow-400" />
+                      <span className="text-sm text-gray-300">{selectedShow.rating}/10</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedShow(null);
+                    setAvailableServices([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-200"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {selectedShow.overview && (
+                <p className="text-sm text-gray-300 bg-gray-700 p-3 rounded-lg">
+                  {selectedShow.overview}
+                </p>
+              )}
+
+              <div>
+                <h3 className="text-white font-semibold mb-2">Where will you watch it?</h3>
+                
+                {loadingServices ? (
+                  <div className="text-center py-4 text-gray-400">Loading streaming services...</div>
+                ) : availableServices.length > 0 ? (
+                  <>
+                    <p className="text-xs text-gray-400 mb-3">Available on:</p>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {availableServices.map(service => (
+                        <button
+                          key={service.id}
+                          onClick={() => handleAddItem(service.name)}
+                          className="flex items-center gap-2 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                        >
+                          {service.logo && (
+                            <img src={service.logo} alt={service.name} className="w-8 h-8 rounded" />
+                          )}
+                          <span className="text-white text-sm">{service.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 text-center mb-2">or select manually:</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-400 mb-3">Select a streaming service:</p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  {['Netflix', 'Hulu', 'Disney+', 'Max', 'Prime Video', 'Apple TV+', 'Paramount+', 'Other'].map(service => (
+                    <button
+                      key={service}
+                      onClick={() => handleAddItem(service)}
+                      className="p-3 bg-blue-900 bg-opacity-40 hover:bg-opacity-60 text-blue-300 rounded-lg transition border border-blue-800"
+                    >
+                      {service}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!selectedShow && searchQuery.length < 2 && (
+            <div className="text-center py-8 text-gray-400">
+              <Search size={48} className="mx-auto mb-3 opacity-50" />
+              <p>Search for a movie or TV show to add to your watch list</p>
+              <p className="text-sm mt-2">Try searching for "Breaking Bad" or "Inception"</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const UserSelectModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full border border-gray-700 text-center">
+        <User size={64} className="mx-auto mb-4 text-blue-400" />
+        <h2 className="text-3xl font-bold text-white mb-2">Who's watching?</h2>
+        <p className="text-gray-400 mb-8">Select your profile to continue</p>
+        
+        <div className="space-y-3">
+          <button
+            onClick={() => handleUserSelect('Anthony')}
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-lg hover:from-blue-700 hover:to-blue-800 font-semibold text-lg transition"
+          >
+            Anthony
+          </button>
+          <button
+            onClick={() => handleUserSelect('Madison')}
+            className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-4 px-6 rounded-lg hover:from-purple-700 hover:to-purple-800 font-semibold text-lg transition"
+          >
+            Madison
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (showUserSelect) {
+    return <UserSelectModal />;
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <p className="text-white">Loading...</p>
+      </div>
+    );
+  }
+
+  const sortedToWatch = [...toWatch].sort((a, b) => calculateAvgPriority(b) - calculateAvgPriority(a));
+
+  return (
+    <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen pb-20">
+      <div className="bg-gradient-to-r from-blue-700 to-purple-700 text-white p-6 shadow-lg">
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <h1 className="text-2xl font-bold">Watch Together</h1>
+            <p className="text-blue-200 text-sm">Currently: {currentUser}</p>
+          </div>
+          <button
+            onClick={handleSwitchUser}
+            className="text-white hover:text-gray-200 p-2 flex items-center gap-2"
+          >
+            <User size={20} />
+            <span className="text-sm">Switch</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex border-b border-gray-700 bg-gray-800">
+        <button
+          onClick={() => setActiveTab('toWatch')}
+          className={`flex-1 py-3 font-medium ${activeTab === 'toWatch' ? 'border-b-2 border-blue-500 text-blue-400' : 'text-gray-400'}`}
+        >
+          To Watch ({toWatch.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('watched')}
+          className={`flex-1 py-3 font-medium ${activeTab === 'watched' ? 'border-b-2 border-green-500 text-green-400' : 'text-gray-400'}`}
+        >
+          Watched ({watched.length})
+        </button>
+      </div>
+
+      <div className="p-4">
+        {activeTab === 'toWatch' ? (
+          <>
+            <div className="mb-4 flex justify-between items-center">
+              <p className="text-sm text-gray-400">Sorted by priority</p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                Add
+              </button>
+            </div>
+            {sortedToWatch.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No shows added yet. Click Add to get started!</p>
+            ) : (
+              sortedToWatch.map(item => <ToWatchCard key={item.id} item={item} />)
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-4">
+              <p className="text-sm text-gray-400">Your watch history</p>
+            </div>
+            {watched.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No shows watched yet. Mark something as watched to see it here!</p>
+            ) : (
+              watched.map(item => <WatchedCard key={item.id} item={item} />)
+            )}
+          </>
+        )}
+      </div>
+
+      {showAddModal && <AddModal />}
+      {showRatingModal && <RatingModal />}
+    </div>
+  );
+};
+
+export default WatchTogether;
