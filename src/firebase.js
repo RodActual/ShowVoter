@@ -4,13 +4,12 @@ import { getFirestore } from 'firebase/firestore';
 
 // Replace this with your Firebase config from the Firebase Console
 const firebaseConfig = {
-  apiKey: "AIzaSyCWbNluKAI5L2S3JoLHymzKFmNW01zMdVc",
-  authDomain: "watch-together-78712.firebaseapp.com",
-  projectId: "watch-together-78712",
-  storageBucket: "watch-together-78712.firebasestorage.app",
-  messagingSenderId: "645519961462",
-  appId: "1:645519961462:web:061a12efe6da1993205e57",
-  measurementId: "G-69BEDTRGP4"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
