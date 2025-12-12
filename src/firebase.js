@@ -20,6 +20,6 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firestore only (no auth needed)
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, "us-central1");
 
 export default app;
