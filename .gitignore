@@ -1,8 +1,6 @@
 # ---- Python / Flask ----
 __pycache__/
 *.py[cod]
-*.egg
-*.egg-info/
 dist/
 build/
 env/
@@ -27,7 +25,6 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-*.py,cover
 
 # Local development settings
 config/*.env
@@ -41,9 +38,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Production build
-build/
 dist/
-.out/
 
 # Local environment variables
 .env.local
@@ -63,15 +58,8 @@ Thumbs.db
 # Firebase cache and config
 .firebase/
 .firebaserc
-backend/config/serviceAccountKey.json
+backend/serviceAccountKey.json
 
 # ---- IDE / Tooling ----
 .vscode/
 .idea/
-*.swp
-*.swo
-*.bak
-*.tmp
-
-*storybook.log
-storybook-static
