@@ -1,5 +1,5 @@
 // src/App.js
-import React from 'react';
+
 import WatchTogether from '../WatchTogether.jsx';
 import '../App.css';
 
