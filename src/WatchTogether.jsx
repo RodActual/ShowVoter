@@ -17,6 +17,8 @@ import { auth } from './firebase';
 
 const COUPLE_ID = 'pamrod'; // Single shared couple ID
 
+//Adding comment to test commit
+
 const WatchTogether = () => {
   const [currentUser, setCurrentUser] = useState(null); // 'Anthony' or 'Pam'
   const [showUserSelect, setShowUserSelect] = useState(false);
