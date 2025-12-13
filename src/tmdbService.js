@@ -1,15 +1,13 @@
 // src/tmdbService.js
 
-// Import necessary Firebase SDK components (assuming your firebase.js exports the functions instance)
-import { functions } from './firebase'; 
+import { functions } from './firebase';
+import { httpsCallable } from 'firebase/functions';
 
 // Base URLs are generally safe to keep on the client
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 
 // Define a single callable function for all TMDB requests
-// This function will be called 'tmdbProxy' in the backend
-const tmdbProxy = functions.httpsCallable('tmdbProxy');
-
+const tmdbProxy = httpsCallable(functions, 'tmdbProxy');
 
 // Service provider mapping (TMDB provider IDs to readable names)
 const SERVICE_MAPPING = {

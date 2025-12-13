@@ -23,7 +23,7 @@ exports.tmdbProxy = functions.region(region).https.onCall(async (data, context) 
     
     // 2. Access the secure TMDB key (from functions/.env, accessed automatically by the runtime)
     // NOTE: This key must be set in your functions environment, NOT .env.local
-    const TMDB_API_KEY = process.env.TMDB_API_KEY; 
+const TMDB_API_KEY = functions.config().tmdb?.api_key || process.env.TMDB_API_KEY;
     
     // 3. Extract path and params from the client data
     const { path, params } = data;

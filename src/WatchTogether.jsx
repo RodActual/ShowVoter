@@ -12,6 +12,8 @@ import {
   serverTimestamp,
   deleteDoc 
 } from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
+import { auth } from './firebase';
 
 const COUPLE_ID = 'pamrod'; // Single shared couple ID
 
@@ -45,7 +47,12 @@ const WatchTogether = () => {
     } else {
       setShowUserSelect(true);
     }
+      signInAnonymously(auth).catch(error => {
+    console.error('Auth error:', error);
+  });
   }, []);
+
+  
 
   // Listen to Firestore data
   useEffect(() => {
@@ -796,11 +803,11 @@ const WatchTogether = () => {
 
   return (
     <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen pb-20">
-      <div className="bg-gradient-to-r from-blue-700 to-purple-700 text-white p-6 shadow-lg">
+      <div className={`${currentUser === 'Pam' ? 'bg-gradient-to-r from-amber-600 to-orange-600' : 'bg-gradient-to-r from-blue-700 to-purple-700'} text-white p-6 shadow-lg`}>
         <div className="flex justify-between items-center mb-2">
           <div>
             <h1 className="text-2xl font-bold">Watch Together</h1>
-            <p className="text-blue-200 text-sm">Currently: {currentUser}</p>
+            <p className={`${currentUser === 'Pam' ? 'text-amber-200' : 'text-blue-200'} text-sm`}>Currently: {currentUser}</p>
           </div>
           <button
             onClick={handleSwitchUser}
