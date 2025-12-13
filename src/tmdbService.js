@@ -29,18 +29,16 @@ export const tmdbService = {
     if (!query.trim()) return [];
 
     try {
-      // 1. Call the secure backend function with the endpoint path and query data
       const response = await tmdbProxy({ 
         path: 'search/multi', 
         params: { query, include_adult: false } 
       });
       
-      const data = response.data; // The data returned from the backend is already the TMDB response
+      const data = response.data;
       
-      // Filter to only movies and TV shows, map to our format
       return data.results
         .filter(item => item.media_type === 'movie' || item.media_type === 'tv')
-        .slice(0, 10) // Limit to 10 results
+        .slice(0, 10)
         .map(item => ({
           id: item.id,
           tmdbId: item.id,
@@ -64,26 +62,21 @@ export const tmdbService = {
   // Get streaming availability for a movie or TV show (US region)
   async getStreamingProviders(tmdbId, mediaType) {
     try {
-      // 1. Call the secure backend function
       const response = await tmdbProxy({ 
         path: `${mediaType}/${tmdbId}/watch/providers` 
       });
 
       const data = response.data;
-
-      // Get US providers (you can change 'US' to your country code)
       const usProviders = data.results?.US;
 
       if (!usProviders) return [];
 
-      // Combine all provider types (flatrate = subscription, rent, buy)
       const allProviders = [
         ...(usProviders.flatrate || []),
         ...(usProviders.rent || []),
         ...(usProviders.buy || [])
       ];
 
-      // Remove duplicates and map to readable names
       const uniqueProviders = [...new Map(allProviders.map(p => [p.provider_id, p])).values()];
 
       return uniqueProviders.map(provider => ({
@@ -100,7 +93,6 @@ export const tmdbService = {
   // Get details for a specific movie or TV show
   async getDetails(tmdbId, mediaType) {
     try {
-      // 1. Call the secure backend function
       const response = await tmdbProxy({ 
         path: `${mediaType}/${tmdbId}`, 
         params: { append_to_response: 'credits' } 
@@ -131,9 +123,10 @@ export const tmdbService = {
   // Get season details with episodes (for TV shows)
   async getSeasonDetails(tmdbId, seasonNumber) {
     try {
-      // 1. Call the secure backend function
+      // FIX: Added 'language: en-US' to ensure params are never empty, preventing 500 errors
       const response = await tmdbProxy({ 
-        path: `tv/${tmdbId}/season/${seasonNumber}` 
+        path: `tv/${tmdbId}/season/${seasonNumber}`,
+        params: { language: 'en-US' } 
       });
       
       const data = response.data;
@@ -146,12 +139,12 @@ export const tmdbService = {
           overview: ep.overview,
           airDate: ep.air_date,
           stillPath: ep.still_path ? `${TMDB_IMAGE_BASE_URL}${ep.still_path}` : null,
-          yourRating: 5, // These are placeholder ratings
-          spouseRating: 5 // These are placeholder ratings
+          yourRating: 0, 
+          spouseRating: 0 
         })) || []
       };
     } catch (error) {
-      console.error('Error fetching season details:', error);
+      console.error(`Error fetching season ${seasonNumber}:`, error);
       return null;
     }
   }
