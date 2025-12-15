@@ -160,47 +160,70 @@ const WatchTogether = () => {
   const handleSubmitRating = async (anthonyRating, pamRating, episodes = []) => {
     const { id, ...itemData } = itemToRate;
 
-    // Filter to only include episodes the user actually selected
-    const selectedEpisodes = episodes.filter(ep => ep.isSelected);
+    // 1. Filter out only the NEWLY selected episodes
+    const newSelectedEpisodes = episodes.filter(ep => ep.isSelected);
+    
+    // 2. Remove the 'isSelected' flag before saving
+    const cleanNewEpisodes = newSelectedEpisodes.map(({ isSelected, ...ep }) => ep);
 
-    // Calculate initial averages based only on selected episodes
+    // 3. Check if this show already exists in the "watched" list
+    const existingShow = watched.find(
+      w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType
+    );
+
+    let finalEpisodes = cleanNewEpisodes;
+    let targetDocRef;
+
+    // MERGE LOGIC:
+    if (existingShow) {
+      targetDocRef = doc(db, 'couples', COUPLE_ID, 'watched', existingShow.id);
+      const existingEps = existingShow.episodes || [];
+      const episodeMap = new Map();
+      
+      existingEps.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
+      cleanNewEpisodes.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
+      
+      finalEpisodes = Array.from(episodeMap.values());
+    } else {
+      targetDocRef = doc(collection(db, 'couples', COUPLE_ID, 'watched'));
+    }
+
+    // 4. Recalculate averages
     let finalAnthony = anthonyRating;
     let finalPam = pamRating;
 
-    if (selectedEpisodes.length > 0) {
-      const anthonyEps = selectedEpisodes.filter(e => e.anthonyRating > 0);
+    if (finalEpisodes.length > 0) {
+      const anthonyEps = finalEpisodes.filter(e => (e.anthonyRating || 0) > 0);
       if (anthonyEps.length > 0) {
         finalAnthony = Math.round(anthonyEps.reduce((acc, e) => acc + e.anthonyRating, 0) / anthonyEps.length);
       }
       
-      const pamEps = selectedEpisodes.filter(e => e.pamRating > 0);
+      const pamEps = finalEpisodes.filter(e => (e.pamRating || 0) > 0);
       if (pamEps.length > 0) {
         finalPam = Math.round(pamEps.reduce((acc, e) => acc + e.pamRating, 0) / pamEps.length);
       }
     }
-
-    // Clean up the episode objects before saving (remove isSelected flag)
-    const cleanEpisodes = selectedEpisodes.map(({ isSelected, ...ep }) => ep);
 
     const watchedItem = {
       ...itemData,
       anthonyRating: finalAnthony,
       pamRating: finalPam,
       watchedDate: new Date().toISOString().split('T')[0],
-      episodes: cleanEpisodes.length > 0 ? cleanEpisodes : null,
+      episodes: finalEpisodes.length > 0 ? finalEpisodes : null,
       ratedBy: currentUser,
       updatedAt: serverTimestamp()
     };
     
-    // Always save to "Watched" collection
-    const watchedRef = doc(collection(db, 'couples', COUPLE_ID, 'watched'));
-    await setDoc(watchedRef, watchedItem);
+    await setDoc(targetDocRef, watchedItem, { merge: true });
     
-    // Only delete from "To Watch" if it's a movie OR if ALL episodes were selected
+    // 5. Delete from "To Watch" ONLY if ALL episodes (including previously watched) are done
     const isMovie = itemToRate.type === 'Movie' || itemToRate.mediaType === 'movie';
-    const allEpisodesSelected = episodes.length === 0 || episodes.every(ep => ep.isSelected);
+    // If episodes array is empty in modal, it means either manual entry or no new episodes found
+    const noNewEpisodesAvailable = episodes.length === 0;
+    // Check if user selected everything available in the modal
+    const allAvailableSelected = episodes.every(ep => ep.isSelected);
 
-    if (isMovie || allEpisodesSelected) {
+    if (isMovie || (noNewEpisodesAvailable && allAvailableSelected)) {
       await deleteDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', itemToRate.id));
     }
     
@@ -355,16 +378,9 @@ const WatchTogether = () => {
   const ToWatchCard = ({ item }) => {
     const [editMode, setEditMode] = useState(false);
     
-    // Calculate values for display
     const avgNum = ((item.anthonyPriority || 0) + (item.pamPriority || 0)) / 2;
     const roundedAvg = Math.round(avgNum);
     
-    // Determine Color based on Average
-    let statusColor = "text-gray-400";
-    if (avgNum >= 2.5) statusColor = "text-red-500";
-    else if (avgNum >= 1.5) statusColor = "text-yellow-500";
-    else if (avgNum > 0) statusColor = "text-blue-500";
-
     return (
       <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-3 border border-gray-700 overflow-hidden">
         {item.posterPath && (
@@ -637,29 +653,57 @@ const WatchTogether = () => {
           totalSeasons = details.numberOfSeasons;
         }
 
+        // Get previously watched episodes from Firestore
+        const existingShow = watched.find(
+          w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType
+        );
+        const watchedSet = new Set();
+        if (existingShow && existingShow.episodes) {
+          existingShow.episodes.forEach(ep => {
+            watchedSet.add(`${ep.season}-${ep.num}`);
+          });
+        }
+
         let allEpisodes = [];
-        // Loop exact number of seasons to prevent 500 errors
+        // Loop exact number of seasons
         for (let i = 1; i <= totalSeasons; i++) {
           const seasonData = await tmdbService.getSeasonDetails(itemToRate.tmdbId, i);
           
           if (seasonData && seasonData.episodes) {
-            const currentSeasonEps = seasonData.episodes.map((ep, index) => ({
-              season: i,
-              num: ep.num || (index + 1), 
-              title: ep.title || `Episode ${index + 1}`,
-              anthonyRating: 5,
-              pamRating: 5,
-              isSelected: true
-            }));
+            const currentSeasonEps = seasonData.episodes
+              // FILTER: Exclude already watched episodes
+              .filter(ep => {
+                const epNum = ep.num || ep.episode_number; // Handle data inconsistency if any
+                return !watchedSet.has(`${i}-${epNum}`);
+              })
+              .map((ep, index) => ({
+                season: i,
+                num: ep.num || ep.episode_number || (index + 1), 
+                title: ep.title || ep.name || `Episode ${index + 1}`,
+                anthonyRating: 5,
+                pamRating: 5,
+                isSelected: true
+              }));
             allEpisodes = [...allEpisodes, ...currentSeasonEps];
           }
         }
 
         if (allEpisodes.length > 0) {
           setEpisodes(allEpisodes);
-          setExpandedSeason(1);
+          setExpandedSeason(allEpisodes[0].season); // Expand the first season that has unwatched eps
         } else {
-          handleAddEpisodesManually();
+          // If no episodes remain (all watched), specific message or handle logic
+          if (watchedSet.size > 0) {
+             // User has watched everything. We could show a "All Caught Up" message, 
+             // but strictly following the instruction: if fetching returns 0 because of filtering, 
+             // we show empty or handle as "nothing new".
+             // For now, let's just let it be empty or default manual.
+             console.log("All episodes watched.");
+          }
+          // Only fallback to manual if we genuinely found nothing AND have no history
+          if (watchedSet.size === 0) {
+             handleAddEpisodesManually();
+          }
         }
 
       } catch (error) {
@@ -688,7 +732,6 @@ const WatchTogether = () => {
       ));
     };
 
-    // Toggle logic for selection checkboxes
     const toggleEpisodeSelection = (epNum, seasonNum) => {
       setEpisodes(episodes.map(ep => 
         (ep.num === epNum && (ep.season === seasonNum || !ep.season))
@@ -755,7 +798,7 @@ const WatchTogether = () => {
             {(itemToRate?.type === 'TV Show' || itemToRate?.mediaType === 'tv') && (
               <div className="bg-blue-900 bg-opacity-40 p-4 rounded border border-blue-800">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-semibold text-white">Episodes</h3>
+                  <h3 className="font-semibold text-white">Episodes (Unwatched)</h3>
                   <div className="flex gap-2 text-xs">
                     <button 
                       onClick={() => toggleAllSelection(true)}
@@ -780,9 +823,11 @@ const WatchTogether = () => {
                 ) : episodes.length === 0 ? (
                   <div>
                     <label className="text-sm text-gray-300 block mb-2">
-                      Could not load episodes. Add manually?
+                      {/* Logic to show correct message if all are watched */}
+                      No new episodes found.
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 mt-4 pt-4 border-t border-gray-600">
+                       <p className="text-xs text-gray-400">Add manually?</p>
                       <input
                         type="number"
                         min="0"
@@ -795,7 +840,7 @@ const WatchTogether = () => {
                         onClick={handleAddEpisodesManually}
                         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                       >
-                        Add Manual Episodes
+                        Add Manual
                       </button>
                     </div>
                   </div>
@@ -1116,7 +1161,6 @@ const WatchTogether = () => {
     );
   }
 
-  // Get and Sort Items based on current selection
   const activeList = activeTab === 'toWatch' ? toWatch : watched;
   const sortedItems = getSortedItems(activeList, activeTab);
 
@@ -1154,7 +1198,6 @@ const WatchTogether = () => {
       </div>
 
       <div className="p-4">
-        {/* Sort Controls Header */}
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
             <ArrowUpDown size={16} className="text-gray-400" />
@@ -1180,7 +1223,6 @@ const WatchTogether = () => {
           )}
         </div>
 
-        {/* Content Render */}
         {sortedItems.length === 0 ? (
           <p className="text-center text-gray-500 py-8">
             {activeTab === 'toWatch' 
