@@ -35,7 +35,7 @@ const WatchTogether = () => {
   // State for expanded accordions
   const [expandedShow, setExpandedShow] = useState(null);
   
-  // State for editing episodes (Parent controlled for stability)
+  // State for editing episodes
   const [editingWatchedId, setEditingWatchedId] = useState(null);
   const [editingToWatchId, setEditingToWatchId] = useState(null);
 
@@ -133,7 +133,6 @@ const WatchTogether = () => {
       title: selectedShow.title,
       type: selectedShow.type,
       service: selectedService,
-      // FIX: Default priority is now 0 (No Priority)
       anthonyPriority: 0,
       pamPriority: 0,
       tmdbId: selectedShow.tmdbId,
@@ -162,11 +161,13 @@ const WatchTogether = () => {
     let updatesCount = 0;
 
     try {
+      // Check all watched TV shows to see if new episodes exist
       const tvShows = watched.filter(item => item.type === 'TV Show' || item.mediaType === 'tv');
 
       for (const show of tvShows) {
         if (!show.tmdbId) continue;
 
+        // Skip if already in To Watch
         const alreadyInToWatch = toWatch.some(t => t.tmdbId === show.tmdbId);
         if (alreadyInToWatch) continue;
 
@@ -182,7 +183,7 @@ const WatchTogether = () => {
               title: show.title,
               type: 'TV Show',
               service: show.service || 'Unknown',
-              anthonyPriority: 3, 
+              anthonyPriority: 3, // High priority for new episodes
               pamPriority: 3,
               tmdbId: show.tmdbId,
               mediaType: 'tv',
@@ -193,7 +194,7 @@ const WatchTogether = () => {
               addedDate: new Date().toISOString().split('T')[0],
               addedBy: 'System', 
               createdAt: serverTimestamp(),
-              isNewEpisodes: true 
+              isNewEpisodes: true // Flag for badge
             };
 
             const itemRef = doc(collection(db, 'couples', COUPLE_ID, 'toWatch'));
@@ -204,8 +205,7 @@ const WatchTogether = () => {
       }
       
       if (updatesCount > 0) {
-        alert(`Found ${updatesCount} shows with new episodes! They have been added to your Watch List.`);
-        setActiveTab('toWatch');
+        alert(`Found ${updatesCount} shows with new episodes!`);
       } else {
         alert("You are up to date! No new episodes found.");
       }
@@ -432,7 +432,6 @@ const WatchTogether = () => {
     });
   };
 
-  // UPDATED: Now receives isEditing/onToggleEdit from parent for stability
   const ToWatchCard = ({ item, isEditing, onToggleEdit }) => {
     const avgNum = ((item.anthonyPriority || 0) + (item.pamPriority || 0)) / 2;
     const roundedAvg = Math.round(avgNum);
@@ -456,7 +455,9 @@ const WatchTogether = () => {
                 </div>
               )}
               {item.isNewEpisodes && (
-                <span className="bg-green-600 text-white text-xs px-2 py-1 rounded mt-2 inline-block">New Episodes</span>
+                <span className="bg-green-600 text-white text-xs px-2 py-1 rounded mt-2 inline-block font-bold shadow-sm">
+                  New Episodes
+                </span>
               )}
             </div>
           </div>
@@ -531,7 +532,6 @@ const WatchTogether = () => {
     const pam = item.pamRating || 0;
     const avgRating = pam ? ((anthony + pam) / 2).toFixed(1) : anthony;
     
-    // Group episodes by season for rendering
     const episodesBySeason = item.episodes ? item.episodes.reduce((acc, ep) => {
       const s = ep.season || 1;
       if (!acc[s]) acc[s] = [];
@@ -1002,177 +1002,6 @@ const WatchTogether = () => {
     );
   };
 
-  const AddModal = () => {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-        <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-white">Add to Watch List</h2>
-            <button 
-              onClick={() => {
-                setShowAddModal(false);
-                setSearchQuery('');
-                setSearchResults([]);
-                setSelectedShow(null);
-                setAvailableServices([]);
-              }} 
-              className="text-gray-400 hover:text-gray-200"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="mb-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search for a movie or TV show..."
-                className="w-full pl-10 pr-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                autoFocus
-              />
-            </div>
-          </div>
-
-          {searching && (
-            <div className="text-center py-4 text-gray-400">Searching...</div>
-          )}
-
-          {!selectedShow && searchResults.length > 0 && (
-            <div className="space-y-2 mb-4 max-h-96 overflow-y-auto">
-              {searchResults.map(result => (
-                <div
-                  key={result.id}
-                  onClick={() => handleSelectShow(result)}
-                  className="flex gap-3 p-3 bg-gray-700 rounded-lg hover:bg-gray-600 cursor-pointer transition"
-                >
-                  {result.posterPath ? (
-                    <img 
-                      src={result.posterPath} 
-                      alt={result.title}
-                      className="w-16 h-24 object-cover rounded"
-                    />
-                  ) : (
-                    <div className="w-16 h-24 bg-gray-600 rounded flex items-center justify-center">
-                      <span className="text-gray-400 text-xs">No image</span>
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-white">{result.title}</h3>
-                    <p className="text-sm text-gray-400">{result.year} • {result.type}</p>
-                    {result.rating && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                        <span className="text-xs text-gray-300">{result.rating}/10</span>
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1 line-clamp-2">{result.overview}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {searchResults.length === 0 && searchQuery.length >= 2 && !searching && (
-            <div className="text-center py-8 text-gray-400">
-              No results found. Try a different search.
-            </div>
-          )}
-
-          {selectedShow && (
-            <div className="space-y-4">
-              <div className="flex gap-3 p-3 bg-gray-700 rounded-lg">
-                {selectedShow.posterPath && (
-                  <img 
-                    src={selectedShow.posterPath} 
-                    alt={selectedShow.title}
-                    className="w-20 h-28 object-cover rounded"
-                  />
-                )}
-                <div className="flex-1">
-                  <h3 className="font-semibold text-white text-lg">{selectedShow.title}</h3>
-                  <p className="text-sm text-gray-400">{selectedShow.year} • {selectedShow.type}</p>
-                  {selectedShow.rating && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <Star size={14} className="fill-yellow-400 text-yellow-400" />
-                      <span className="text-sm text-gray-300">{selectedShow.rating}/10</span>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedShow(null);
-                    setAvailableServices([]);
-                  }}
-                  className="text-gray-400 hover:text-gray-200"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {selectedShow.overview && (
-                <p className="text-sm text-gray-300 bg-gray-700 p-3 rounded-lg">
-                  {selectedShow.overview}
-                </p>
-              )}
-
-              <div>
-                <h3 className="text-white font-semibold mb-2">Where will you watch it?</h3>
-                
-                {loadingServices ? (
-                  <div className="text-center py-4 text-gray-400">Loading streaming services...</div>
-                ) : availableServices.length > 0 ? (
-                  <>
-                    <p className="text-xs text-gray-400 mb-3">Available on:</p>
-                    <div className="grid grid-cols-2 gap-2 mb-4">
-                      {availableServices.map(service => (
-                        <button
-                          key={service.id}
-                          onClick={() => handleAddItem(service.name)}
-                          className="flex items-center gap-2 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
-                        >
-                          {service.logo && (
-                            <img src={service.logo} alt={service.name} className="w-8 h-8 rounded" />
-                          )}
-                          <span className="text-white text-sm">{service.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-400 text-center mb-2">or select manually:</p>
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-400 mb-3">Select a streaming service:</p>
-                )}
-
-                <div className="grid grid-cols-2 gap-2">
-                  {['Netflix', 'Hulu', 'Disney+', 'Max', 'Prime Video', 'Apple TV+', 'Paramount+', 'Other'].map(service => (
-                    <button
-                      key={service}
-                      onClick={() => handleAddItem(service)}
-                      className="p-3 bg-blue-900 bg-opacity-40 hover:bg-opacity-60 text-blue-300 rounded-lg transition border border-blue-800"
-                    >
-                      {service}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!selectedShow && searchQuery.length < 2 && (
-            <div className="text-center py-8 text-gray-400">
-              <Search size={48} className="mx-auto mb-3 opacity-50" />
-              <p>Search for a movie or TV show to add to your watch list</p>
-              <p className="text-sm mt-2">Try searching for "Breaking Bad" or "Inception"</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   const UserSelectModal = () => (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
       <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full border border-gray-700 text-center">
@@ -1263,27 +1092,29 @@ const WatchTogether = () => {
             </select>
           </div>
           
-          {activeTab === 'toWatch' && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700"
-            >
-              <Plus size={16} />
-              Add
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* UPDATED: Check Updates Button is now always visible on To Watch Tab */}
+            {activeTab === 'toWatch' && (
+              <button
+                onClick={handleCheckForUpdates}
+                disabled={isCheckingUpdates}
+                className="bg-gray-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-600 disabled:opacity-50 text-sm"
+              >
+                <RefreshCw size={14} className={isCheckingUpdates ? 'animate-spin' : ''} />
+                {isCheckingUpdates ? 'Checking...' : 'Updates'}
+              </button>
+            )}
 
-          {/* CHECK FOR UPDATES BUTTON (Only in Watched Tab) */}
-          {activeTab === 'watched' && (
-            <button
-              onClick={handleCheckForUpdates}
-              disabled={isCheckingUpdates}
-              className="bg-gray-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-600 disabled:opacity-50 text-sm"
-            >
-              <RefreshCw size={14} className={isCheckingUpdates ? 'animate-spin' : ''} />
-              {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
-            </button>
-          )}
+            {activeTab === 'toWatch' && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                Add
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content Render */}
