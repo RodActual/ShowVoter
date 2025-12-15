@@ -1,6 +1,6 @@
 // src/WatchTogether.jsx
 import React, { useState, useEffect } from 'react';
-import { Star, Plus, Check, X, ChevronDown, ChevronUp, Trash2, Edit2, Search, User, CheckSquare, Square, ArrowUpDown } from 'lucide-react';
+import { Star, Plus, Check, X, ChevronDown, ChevronUp, Trash2, Edit2, Search, User, CheckSquare, Square, ArrowUpDown, RefreshCw } from 'lucide-react';
 import { db } from './firebase';
 import tmdbService from './tmdbService';
 import { 
@@ -29,11 +29,15 @@ const WatchTogether = () => {
   // Sorting State
   const [sortMethod, setSortMethod] = useState('priority'); // 'priority', 'title', 'service'
 
+  // Updates State
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+
   // State for expanded accordions
   const [expandedShow, setExpandedShow] = useState(null);
   
-  // State for editing episodes
-  const [editingEpisodesId, setEditingEpisodesId] = useState(null);
+  // State for editing episodes (Parent controlled for stability)
+  const [editingWatchedId, setEditingWatchedId] = useState(null);
+  const [editingToWatchId, setEditingToWatchId] = useState(null);
 
   const [itemToRate, setItemToRate] = useState(null);
   
@@ -129,8 +133,9 @@ const WatchTogether = () => {
       title: selectedShow.title,
       type: selectedShow.type,
       service: selectedService,
-      anthonyPriority: currentUser === 'Anthony' ? 2 : 0,
-      pamPriority: currentUser === 'Pam' ? 2 : 0,
+      // FIX: Default priority is now 0 (No Priority)
+      anthonyPriority: 0,
+      pamPriority: 0,
       tmdbId: selectedShow.tmdbId,
       mediaType: selectedShow.mediaType,
       posterPath: selectedShow.posterPath,
@@ -152,6 +157,67 @@ const WatchTogether = () => {
     setAvailableServices([]);
   };
 
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdates(true);
+    let updatesCount = 0;
+
+    try {
+      const tvShows = watched.filter(item => item.type === 'TV Show' || item.mediaType === 'tv');
+
+      for (const show of tvShows) {
+        if (!show.tmdbId) continue;
+
+        const alreadyInToWatch = toWatch.some(t => t.tmdbId === show.tmdbId);
+        if (alreadyInToWatch) continue;
+
+        const details = await tmdbService.getDetails(show.tmdbId, 'tv');
+        
+        if (details) {
+          const totalEpisodesRemote = details.numberOfEpisodes || 0;
+          const watchedEpisodesLocal = show.episodes ? show.episodes.length : 0;
+
+          if (totalEpisodesRemote > watchedEpisodesLocal) {
+            
+            const item = {
+              title: show.title,
+              type: 'TV Show',
+              service: show.service || 'Unknown',
+              anthonyPriority: 3, 
+              pamPriority: 3,
+              tmdbId: show.tmdbId,
+              mediaType: 'tv',
+              posterPath: show.posterPath,
+              overview: show.overview,
+              rating: show.rating,
+              year: show.year,
+              addedDate: new Date().toISOString().split('T')[0],
+              addedBy: 'System', 
+              createdAt: serverTimestamp(),
+              isNewEpisodes: true 
+            };
+
+            const itemRef = doc(collection(db, 'couples', COUPLE_ID, 'toWatch'));
+            await setDoc(itemRef, item);
+            updatesCount++;
+          }
+        }
+      }
+      
+      if (updatesCount > 0) {
+        alert(`Found ${updatesCount} shows with new episodes! They have been added to your Watch List.`);
+        setActiveTab('toWatch');
+      } else {
+        alert("You are up to date! No new episodes found.");
+      }
+
+    } catch (error) {
+      console.error("Error checking for updates:", error);
+      alert("Failed to check for updates. Try again later.");
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
+
   const handleMarkWatched = (item) => {
     setItemToRate(item);
     setShowRatingModal(true);
@@ -160,13 +226,10 @@ const WatchTogether = () => {
   const handleSubmitRating = async (anthonyRating, pamRating, episodes = []) => {
     const { id, ...itemData } = itemToRate;
 
-    // 1. Filter out only the NEWLY selected episodes
     const newSelectedEpisodes = episodes.filter(ep => ep.isSelected);
     
-    // 2. Remove the 'isSelected' flag before saving
     const cleanNewEpisodes = newSelectedEpisodes.map(({ isSelected, ...ep }) => ep);
 
-    // 3. Check if this show already exists in the "watched" list
     const existingShow = watched.find(
       w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType
     );
@@ -174,7 +237,6 @@ const WatchTogether = () => {
     let finalEpisodes = cleanNewEpisodes;
     let targetDocRef;
 
-    // MERGE LOGIC:
     if (existingShow) {
       targetDocRef = doc(db, 'couples', COUPLE_ID, 'watched', existingShow.id);
       const existingEps = existingShow.episodes || [];
@@ -188,7 +250,6 @@ const WatchTogether = () => {
       targetDocRef = doc(collection(db, 'couples', COUPLE_ID, 'watched'));
     }
 
-    // 4. Recalculate averages
     let finalAnthony = anthonyRating;
     let finalPam = pamRating;
 
@@ -216,14 +277,10 @@ const WatchTogether = () => {
     
     await setDoc(targetDocRef, watchedItem, { merge: true });
     
-    // 5. Delete from "To Watch" ONLY if ALL episodes (including previously watched) are done
     const isMovie = itemToRate.type === 'Movie' || itemToRate.mediaType === 'movie';
-    // If episodes array is empty in modal, it means either manual entry or no new episodes found
-    const noNewEpisodesAvailable = episodes.length === 0;
-    // Check if user selected everything available in the modal
-    const allAvailableSelected = episodes.every(ep => ep.isSelected);
+    const allAvailableFinished = episodes.length === 0 || episodes.every(ep => ep.isSelected);
 
-    if (isMovie || (noNewEpisodesAvailable && allAvailableSelected)) {
+    if (isMovie || allAvailableFinished) {
       await deleteDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', itemToRate.id));
     }
     
@@ -375,9 +432,8 @@ const WatchTogether = () => {
     });
   };
 
-  const ToWatchCard = ({ item }) => {
-    const [editMode, setEditMode] = useState(false);
-    
+  // UPDATED: Now receives isEditing/onToggleEdit from parent for stability
+  const ToWatchCard = ({ item, isEditing, onToggleEdit }) => {
     const avgNum = ((item.anthonyPriority || 0) + (item.pamPriority || 0)) / 2;
     const roundedAvg = Math.round(avgNum);
     
@@ -398,6 +454,9 @@ const WatchTogether = () => {
                   <Star size={14} className="fill-yellow-400 text-yellow-400" />
                   <span className="text-sm text-gray-300">{item.rating}/10 TMDB</span>
                 </div>
+              )}
+              {item.isNewEpisodes && (
+                <span className="bg-green-600 text-white text-xs px-2 py-1 rounded mt-2 inline-block">New Episodes</span>
               )}
             </div>
           </div>
@@ -432,7 +491,7 @@ const WatchTogether = () => {
             <div className="text-xs text-gray-400 mb-1">Anthony's Priority</div>
             <PriorityRating 
               rating={item.anthonyPriority || 0} 
-              editable={editMode && currentUser === 'Anthony'} 
+              editable={isEditing && currentUser === 'Anthony'} 
               onRate={(rating) => handleUpdatePriority(item.id, 'anthonyPriority', rating)}
             />
           </div>
@@ -440,7 +499,7 @@ const WatchTogether = () => {
             <div className="text-xs text-gray-400 mb-1">Pam's Priority</div>
             <PriorityRating 
               rating={item.pamPriority || 0} 
-              editable={editMode && currentUser === 'Pam'} 
+              editable={isEditing && currentUser === 'Pam'} 
               onRate={(rating) => handleUpdatePriority(item.id, 'pamPriority', rating)}
             />
           </div>
@@ -448,11 +507,11 @@ const WatchTogether = () => {
         
         <div className="flex gap-2 mt-3">
           <button 
-            onClick={() => setEditMode(!editMode)}
+            onClick={onToggleEdit}
             className="flex-1 bg-gray-700 text-gray-200 py-2 rounded hover:bg-gray-600 flex items-center justify-center gap-2"
           >
             <Edit2 size={16} />
-            {editMode ? 'Done' : 'Edit Priority'}
+            {isEditing ? 'Done' : 'Edit Priority'}
           </button>
           <button 
             onClick={() => handleMarkWatched(item)}
@@ -673,7 +732,7 @@ const WatchTogether = () => {
             const currentSeasonEps = seasonData.episodes
               // FILTER: Exclude already watched episodes
               .filter(ep => {
-                const epNum = ep.num || ep.episode_number; // Handle data inconsistency if any
+                const epNum = ep.num || ep.episode_number; 
                 return !watchedSet.has(`${i}-${epNum}`);
               })
               .map((ep, index) => ({
@@ -690,16 +749,8 @@ const WatchTogether = () => {
 
         if (allEpisodes.length > 0) {
           setEpisodes(allEpisodes);
-          setExpandedSeason(allEpisodes[0].season); // Expand the first season that has unwatched eps
+          setExpandedSeason(allEpisodes[0].season);
         } else {
-          // If no episodes remain (all watched), specific message or handle logic
-          if (watchedSet.size > 0) {
-             // User has watched everything. We could show a "All Caught Up" message, 
-             // but strictly following the instruction: if fetching returns 0 because of filtering, 
-             // we show empty or handle as "nothing new".
-             // For now, let's just let it be empty or default manual.
-             console.log("All episodes watched.");
-          }
           // Only fallback to manual if we genuinely found nothing AND have no history
           if (watchedSet.size === 0) {
              handleAddEpisodesManually();
@@ -823,11 +874,10 @@ const WatchTogether = () => {
                 ) : episodes.length === 0 ? (
                   <div>
                     <label className="text-sm text-gray-300 block mb-2">
-                      {/* Logic to show correct message if all are watched */}
                       No new episodes found.
                     </label>
                     <div className="flex gap-2 mt-4 pt-4 border-t border-gray-600">
-                       <p className="text-xs text-gray-400">Add manually?</p>
+                       <p className="text-xs text-gray-400 self-center">Add manually?</p>
                       <input
                         type="number"
                         min="0"
@@ -1198,6 +1248,7 @@ const WatchTogether = () => {
       </div>
 
       <div className="p-4">
+        {/* Sort Controls Header */}
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
             <ArrowUpDown size={16} className="text-gray-400" />
@@ -1221,8 +1272,21 @@ const WatchTogether = () => {
               Add
             </button>
           )}
+
+          {/* CHECK FOR UPDATES BUTTON (Only in Watched Tab) */}
+          {activeTab === 'watched' && (
+            <button
+              onClick={handleCheckForUpdates}
+              disabled={isCheckingUpdates}
+              className="bg-gray-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-600 disabled:opacity-50 text-sm"
+            >
+              <RefreshCw size={14} className={isCheckingUpdates ? 'animate-spin' : ''} />
+              {isCheckingUpdates ? 'Checking...' : 'Check Updates'}
+            </button>
+          )}
         </div>
 
+        {/* Content Render */}
         {sortedItems.length === 0 ? (
           <p className="text-center text-gray-500 py-8">
             {activeTab === 'toWatch' 
@@ -1231,14 +1295,21 @@ const WatchTogether = () => {
           </p>
         ) : (
           activeTab === 'toWatch' ? (
-            sortedItems.map(item => <ToWatchCard key={item.id} item={item} />)
+            sortedItems.map(item => (
+              <ToWatchCard 
+                key={item.id} 
+                item={item} 
+                isEditing={editingToWatchId === item.id}
+                onToggleEdit={() => setEditingToWatchId(editingToWatchId === item.id ? null : item.id)}
+              />
+            ))
           ) : (
             sortedItems.map(item => (
               <WatchedCard 
                 key={item.id} 
                 item={item} 
-                isEditing={editingEpisodesId === item.id}
-                onToggleEdit={() => setEditingEpisodesId(editingEpisodesId === item.id ? null : item.id)}
+                isEditing={editingWatchedId === item.id}
+                onToggleEdit={() => setEditingWatchedId(editingWatchedId === item.id ? null : item.id)}
               />
             ))
           )
