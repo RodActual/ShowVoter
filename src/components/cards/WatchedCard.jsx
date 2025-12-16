@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
 import StarRating from '../common/StarRating';
 
@@ -10,21 +10,71 @@ const WatchedCard = ({
   onDelete, 
   expandedShow, 
   setExpandedShow,
-  onUpdateShowRating,
-  onUpdateEpisodeRating 
+  onSave
 }) => {
   const isExpanded = expandedShow === item.id;
-  const anthony = item.anthonyRating || 0;
-  const pam = item.pamRating || 0;
-  const avgRating = pam ? ((anthony + pam) / 2).toFixed(1) : anthony;
+  
+  // Local state for editing
+  const [localRatings, setLocalRatings] = useState({
+    anthony: item.anthonyRating || 0,
+    pam: item.pamRating || 0
+  });
+  const [localEpisodes, setLocalEpisodes] = useState(item.episodes || []);
+
+  // Sync with DB if not editing
+  useEffect(() => {
+    if (!isEditing) {
+      setLocalRatings({
+        anthony: item.anthonyRating || 0,
+        pam: item.pamRating || 0
+      });
+      setLocalEpisodes(item.episodes || []);
+    }
+  }, [item, isEditing]);
+
+  const handleShowRatingChange = (user, value) => {
+    setLocalRatings(prev => ({ ...prev, [user]: value }));
+  };
+
+  const handleEpisodeChange = (episodeNum, seasonNum, user, newRating) => {
+    const updatedEpisodes = localEpisodes.map(ep => {
+      const isMatch = (ep.season === seasonNum && ep.num === episodeNum) || 
+                      (!ep.season && ep.num === episodeNum);
+      if (isMatch) {
+        return { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: newRating };
+      }
+      return ep;
+    });
+    setLocalEpisodes(updatedEpisodes);
+
+    // Auto-recalculate Top Level Average for the user
+    const userField = user === 'Anthony' ? 'anthonyRating' : 'pamRating';
+    const ratedEps = updatedEpisodes.filter(ep => (ep[userField] || 0) > 0);
+    
+    if (ratedEps.length > 0) {
+      const sum = ratedEps.reduce((acc, ep) => acc + (ep[userField] || 0), 0);
+      const newAvg = Math.round(sum / ratedEps.length);
+      handleShowRatingChange(user === 'Anthony' ? 'anthony' : 'pam', newAvg);
+    }
+  };
+
+  const handleDone = () => {
+    onSave(item.id, {
+      anthonyRating: localRatings.anthony,
+      pamRating: localRatings.pam,
+      episodes: localEpisodes
+    });
+  };
+
+  const avgRating = localRatings.pam ? ((localRatings.anthony + localRatings.pam) / 2).toFixed(1) : localRatings.anthony;
   
   // Group episodes by season
-  const episodesBySeason = item.episodes ? item.episodes.reduce((acc, ep) => {
+  const episodesBySeason = localEpisodes.reduce((acc, ep) => {
     const s = ep.season || 1;
     if (!acc[s]) acc[s] = [];
     acc[s].push(ep);
     return acc;
-  }, {}) : {};
+  }, {});
 
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-3 border border-gray-700">
@@ -80,24 +130,24 @@ const WatchedCard = ({
         <div>
           <div className="text-xs text-gray-400 mb-1">Anthony's Rating</div>
           <StarRating 
-            rating={anthony} 
+            rating={localRatings.anthony} 
             editable={isEditing && currentUser === 'Anthony'} 
-            onRate={(rating) => onUpdateShowRating(item.id, 'anthonyRating', rating)}
+            onRate={(r) => handleShowRatingChange('anthony', r)}
           />
         </div>
         <div>
           <div className="text-xs text-gray-400 mb-1">Pam's Rating</div>
           <StarRating 
-            rating={pam} 
+            rating={localRatings.pam} 
             editable={isEditing && currentUser === 'Pam'} 
-            onRate={(rating) => onUpdateShowRating(item.id, 'pamRating', rating)}
+            onRate={(r) => handleShowRatingChange('pam', r)}
           />
         </div>
       </div>
 
       <div className="flex gap-2 mt-3">
         <button 
-          onClick={onToggleEdit}
+          onClick={isEditing ? handleDone : onToggleEdit}
           className="flex-1 bg-gray-700 text-gray-200 py-2 rounded hover:bg-gray-600 flex items-center justify-center gap-2"
         >
           <Edit2 size={16} />
@@ -105,7 +155,7 @@ const WatchedCard = ({
         </button>
       </div>
 
-      {item.episodes && (
+      {localEpisodes.length > 0 && (
         <div className="mt-3 border-t border-gray-700 pt-2">
           <div className="flex justify-between items-center">
             <button 
@@ -113,7 +163,7 @@ const WatchedCard = ({
               className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 w-full justify-center py-2"
             >
               {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              {isExpanded ? 'Hide' : 'Show'} Episodes ({item.episodes.length})
+              {isExpanded ? 'Hide' : 'Show'} Episodes ({localEpisodes.length})
             </button>
           </div>
           
@@ -146,7 +196,7 @@ const WatchedCard = ({
                               maxStars={10}
                               size={16}
                               editable={isEditing && currentUser === 'Anthony'} 
-                              onRate={(rating) => onUpdateEpisodeRating(item.id, {num: ep.num, season: ep.season}, 'Anthony', rating)}
+                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, 'Anthony', r)}
                             />
                           </div>
                           <div>
@@ -155,8 +205,8 @@ const WatchedCard = ({
                               rating={ep.pamRating} 
                               maxStars={10}
                               size={16}
-                              editable={isEditing && currentUser === 'Pam'} 
-                              onRate={(rating) => onUpdateEpisodeRating(item.id, {num: ep.num, season: ep.season}, 'Pam', rating)}
+                              editable={isEditing && currentUser === 'Pam'}
+                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, 'Pam', r)}
                             />
                           </div>
                         </div>

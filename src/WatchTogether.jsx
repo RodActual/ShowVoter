@@ -1,8 +1,8 @@
 // src/WatchTogether.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, User, ArrowUpDown, RefreshCw } from 'lucide-react';
-import { db } from './services/firebase';
-import tmdbService from './services/tmdbService';
+import { db } from './services/firebase'; 
+import tmdbService from './services/tmdbService'; 
 import { 
   collection, doc, setDoc, getDoc, onSnapshot, serverTimestamp, deleteDoc 
 } from 'firebase/firestore';
@@ -61,6 +61,10 @@ const WatchTogether = () => {
     setShowUserSelect(false);
   };
 
+  const handleSwitchUser = () => {
+    setShowUserSelect(true);
+  };
+
   const handleAddItem = async (selectedShow, selectedService) => {
     if (!selectedShow) return;
     const item = {
@@ -93,7 +97,6 @@ const WatchTogether = () => {
     const newSelectedEpisodes = episodes.filter(ep => ep.isSelected);
     const cleanNewEpisodes = newSelectedEpisodes.map(({ isSelected, ...ep }) => ep);
 
-    // Merge Logic
     const existingShow = watched.find(w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType);
     let finalEpisodes = cleanNewEpisodes;
     let targetDocRef;
@@ -109,7 +112,6 @@ const WatchTogether = () => {
       targetDocRef = doc(collection(db, 'couples', COUPLE_ID, 'watched'));
     }
 
-    // Average Calc
     let finalAnthony = anthonyRating, finalPam = pamRating;
     if (finalEpisodes.length > 0) {
       const antEps = finalEpisodes.filter(e => (e.anthonyRating || 0) > 0);
@@ -128,7 +130,6 @@ const WatchTogether = () => {
       updatedAt: serverTimestamp()
     }, { merge: true });
 
-    // Removal Logic
     const isMovie = itemToRate.type === 'Movie' || itemToRate.mediaType === 'movie';
     const allFinished = episodes.length === 0 || episodes.every(ep => ep.isSelected);
     if (isMovie || allFinished) {
@@ -174,8 +175,13 @@ const WatchTogether = () => {
 
   const handleDeleteItem = (id) => deleteDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', id));
   const handleDeleteWatched = (id) => deleteDoc(doc(db, 'couples', COUPLE_ID, 'watched', id));
-  const handleUpdateField = async (collectionName, id, field, value) => {
-    await setDoc(doc(db, 'couples', COUPLE_ID, collectionName, id), { [field]: value }, { merge: true });
+  const handleSaveToWatch = async (id, data) => {
+    await setDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', id), data, { merge: true });
+    setEditingToWatchId(null);
+  };
+  const handleSaveWatched = async (id, data) => {
+    await setDoc(doc(db, 'couples', COUPLE_ID, 'watched', id), data, { merge: true });
+    setEditingWatchedId(null);
   };
 
   const handleUpdateEpisodeRating = async (showId, episodeNum, user, newRating) => {
@@ -258,18 +264,24 @@ const WatchTogether = () => {
           <p className="text-center text-gray-500 py-8">List is empty.</p>
         ) : (
           activeTab === 'toWatch' ? (
-            sortedItems.map(item => (
-              <ToWatchCard 
-                key={item.id} 
-                item={item} 
-                currentUser={currentUser}
-                isEditing={editingToWatchId === item.id}
-                onToggleEdit={() => setEditingToWatchId(editingToWatchId === item.id ? null : item.id)}
-                onDelete={handleDeleteItem}
-                onMarkWatched={handleMarkWatched}
-                onUpdatePriority={(id, field, val) => handleUpdateField('toWatch', id, field, val)}
-              />
-            ))
+            sortedItems.map(item => {
+              // Find matching watched entry to pass history to ToWatchCard
+              const watchedEntry = watched.find(w => w.tmdbId === item.tmdbId);
+              
+              return (
+                <ToWatchCard 
+                  key={item.id} 
+                  item={item} 
+                  currentUser={currentUser}
+                  isEditing={editingToWatchId === item.id}
+                  onToggleEdit={() => setEditingToWatchId(editingToWatchId === item.id ? null : item.id)}
+                  onDelete={handleDeleteItem}
+                  onMarkWatched={handleMarkWatched}
+                  onSave={handleSaveToWatch}
+                  watchedEpisodes={watchedEntry?.episodes} // PASS HISTORY HERE
+                />
+              );
+            })
           ) : (
             sortedItems.map(item => (
               <WatchedCard 
@@ -281,7 +293,7 @@ const WatchTogether = () => {
                 onDelete={handleDeleteWatched}
                 expandedShow={expandedShow}
                 setExpandedShow={setExpandedShow}
-                onUpdateShowRating={(id, field, val) => handleUpdateField('watched', id, field, val)}
+                onSave={handleSaveWatched}
                 onUpdateEpisodeRating={handleUpdateEpisodeRating}
               />
             ))
