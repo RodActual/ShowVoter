@@ -1,5 +1,6 @@
+// src/components/modals/RatingModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, CheckSquare, Square } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, CheckSquare, Square, Ban } from 'lucide-react';
 import StarRating from '../common/StarRating';
 import tmdbService from '../../services/tmdbService';
 
@@ -10,6 +11,9 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
   const [episodes, setEpisodes] = useState([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [expandedSeason, setExpandedSeason] = useState(1);
+  
+  // NEW: DNF State
+  const [isDNF, setIsDNF] = useState(false);
 
   useEffect(() => {
     if (item?.tmdbId && (item?.type === 'TV Show' || item?.mediaType === 'tv')) {
@@ -123,7 +127,9 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
         </div>
 
         <div className="space-y-4">
-          <div className="bg-gray-700 p-4 rounded">
+          
+          {/* Rating Section - Disable opacity if DNF is selected */}
+          <div className={`bg-gray-700 p-4 rounded transition-opacity ${isDNF ? 'opacity-50 pointer-events-none' : ''}`}>
             <h3 className="font-semibold mb-3 text-white">Overall Rating (1-10 stars)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -138,7 +144,7 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
           </div>
 
           {(item?.type === 'TV Show' || item?.mediaType === 'tv') && (
-            <div className="bg-blue-900 bg-opacity-40 p-4 rounded border border-blue-800">
+            <div className={`bg-blue-900 bg-opacity-40 p-4 rounded border border-blue-800 ${isDNF ? 'opacity-50 pointer-events-none' : ''}`}>
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-semibold text-white">Episodes (Unwatched)</h3>
                 <div className="flex gap-2 text-xs">
@@ -209,7 +215,30 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
             </div>
           )}
         </div>
-        <button onClick={() => onSubmit(anthonyRating, pamRating, episodes)} className="w-full mt-6 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium">Save & Mark as Watched</button>
+
+        {/* Feature 9: Abandon (DNF) Checkbox */}
+        <div className="mt-4 p-3 bg-red-900/20 border border-red-900/50 rounded flex items-center gap-3">
+          <button 
+            onClick={() => setIsDNF(!isDNF)}
+            className={`w-6 h-6 flex items-center justify-center rounded border ${isDNF ? 'bg-red-600 border-red-500' : 'bg-transparent border-gray-500'}`}
+          >
+            {isDNF && <CheckSquare size={16} className="text-white" />}
+          </button>
+          <div className="flex-1" onClick={() => setIsDNF(!isDNF)}>
+            <span className="block text-white font-medium flex items-center gap-2">
+              <Ban size={16} className="text-red-400" />
+              We Abandoned This (DNF)
+            </span>
+            <span className="text-xs text-gray-400">Moves to history but marked as unfinished.</span>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => onSubmit(anthonyRating, pamRating, episodes, isDNF)} 
+          className={`w-full mt-6 py-3 rounded-lg font-medium transition ${isDNF ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+        >
+          {isDNF ? 'Save as Abandoned' : 'Save & Mark as Watched'}
+        </button>
       </div>
     </div>
   );

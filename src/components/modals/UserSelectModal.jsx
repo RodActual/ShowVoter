@@ -1,7 +1,7 @@
 import React from 'react';
 import { User } from 'lucide-react';
 
-const UserSelectModal = ({ onSelectUser }) => {
+const UserSelectModal = ({ onSelectUser, settings }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
       <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full border border-gray-700 text-center">
@@ -11,16 +11,18 @@ const UserSelectModal = ({ onSelectUser }) => {
         
         <div className="space-y-3">
           <button
-            onClick={() => onSelectUser('Anthony')}
-            className="w-full bg-gradient-to-r from-blue-600 to-green-700 text-white py-4 px-6 rounded-lg hover:from-blue-700 hover:to-blue-800 font-semibold text-lg transition"
+            onClick={() => onSelectUser(settings.user1Name)}
+            style={{ backgroundColor: settings.user1Color }}
+            className="w-full text-white py-4 px-6 rounded-lg hover:opacity-90 font-semibold text-lg transition"
           >
-            Anthony
+            {settings.user1Name}
           </button>
           <button
-            onClick={() => onSelectUser('Pam')}
-            className="w-full bg-gradient-to-r from-yellow-600 to-pink-700 text-white py-4 px-6 rounded-lg hover:from-purple-700 hover:to-purple-800 font-semibold text-lg transition"
+            onClick={() => onSelectUser(settings.user2Name)}
+            style={{ backgroundColor: settings.user2Color }}
+            className="w-full text-white py-4 px-6 rounded-lg hover:opacity-90 font-semibold text-lg transition"
           >
-            Pam
+            {settings.user2Name}
           </button>
         </div>
       </div>

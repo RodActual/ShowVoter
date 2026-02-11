@@ -1,15 +1,11 @@
-// src/tmdbService.js
+// src/services/tmdbService.js
 
 import { functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
-// Base URLs are generally safe to keep on the client
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-
-// Define a single callable function for all TMDB requests
 const tmdbProxy = httpsCallable(functions, 'tmdbProxy');
 
-// Service provider mapping (TMDB provider IDs to readable names)
 const SERVICE_MAPPING = {
   8: 'Netflix',
   15: 'Hulu',
@@ -24,7 +20,6 @@ const SERVICE_MAPPING = {
 };
 
 export const tmdbService = {
-  // Search for movies and TV shows
   async search(query) {
     if (!query.trim()) return [];
 
@@ -44,6 +39,8 @@ export const tmdbService = {
           tmdbId: item.id,
           title: item.media_type === 'movie' ? item.title : item.name,
           type: item.media_type === 'movie' ? 'Movie' : 'TV Show',
+          // Feature 10 Requirement: Store full date for countdowns
+          releaseDate: item.media_type === 'movie' ? item.release_date : item.first_air_date,
           year: item.media_type === 'movie' 
             ? item.release_date?.split('-')[0] 
             : item.first_air_date?.split('-')[0],
@@ -59,7 +56,6 @@ export const tmdbService = {
     }
   },
 
-  // Get streaming availability for a movie or TV show (US region)
   async getStreamingProviders(tmdbId, mediaType) {
     try {
       const response = await tmdbProxy({ 
@@ -90,7 +86,6 @@ export const tmdbService = {
     }
   },
 
-  // Get details for a specific movie or TV show
   async getDetails(tmdbId, mediaType) {
     try {
       const response = await tmdbProxy({ 
@@ -120,10 +115,8 @@ export const tmdbService = {
     }
   },
 
-  // Get season details with episodes (for TV shows)
   async getSeasonDetails(tmdbId, seasonNumber) {
     try {
-      // FIX: Added 'language: en-US' to ensure params are never empty, preventing 500 errors
       const response = await tmdbProxy({ 
         path: `tv/${tmdbId}/season/${seasonNumber}`,
         params: { language: 'en-US' } 
@@ -145,6 +138,26 @@ export const tmdbService = {
       };
     } catch (error) {
       console.error(`Error fetching season ${seasonNumber}:`, error);
+      return null;
+    }
+  },
+
+  // Feature 7: New Method for Trailers
+  async getVideos(tmdbId, mediaType) {
+    try {
+      const response = await tmdbProxy({
+        path: `${mediaType}/${tmdbId}/videos`,
+        params: { language: 'en-US' }
+      });
+      const data = response.data;
+      
+      // Look for official Trailer on YouTube
+      const trailer = data.results.find(v => v.site === 'YouTube' && v.type === 'Trailer') || 
+                      data.results.find(v => v.site === 'YouTube');
+      
+      return trailer ? trailer.key : null;
+    } catch (error) {
+      console.error('Error fetching videos:', error);
       return null;
     }
   }
