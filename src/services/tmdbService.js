@@ -1,10 +1,7 @@
 // src/services/tmdbService.js
 
-import { functions } from './firebase';
-import { httpsCallable } from 'firebase/functions';
-
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-const tmdbProxy = httpsCallable(functions, 'tmdbProxy');
+const APP_TOKEN = import.meta.env.VITE_APP_TOKEN || '';
 
 const SERVICE_MAPPING = {
   8: 'Netflix',
@@ -19,18 +16,26 @@ const SERVICE_MAPPING = {
   HBO: 'Max'
 };
 
+async function tmdbProxy(path, params = {}) {
+  const url = new URL(`/api/tmdb/${path}`, location.origin);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) url.searchParams.set(key, value);
+  });
+
+  const res = await fetch(url, {
+    headers: APP_TOKEN ? { Authorization: `Bearer ${APP_TOKEN}` } : {}
+  });
+  if (!res.ok) throw new Error(`TMDB proxy error (${res.status})`);
+  return res.json();
+}
+
 export const tmdbService = {
   async search(query) {
     if (!query.trim()) return [];
 
     try {
-      const response = await tmdbProxy({ 
-        path: 'search/multi', 
-        params: { query, include_adult: false } 
-      });
-      
-      const data = response.data;
-      
+      const data = await tmdbProxy('search/multi', { query, include_adult: false });
+
       return data.results
         .filter(item => item.media_type === 'movie' || item.media_type === 'tv')
         .slice(0, 10)
@@ -41,8 +46,8 @@ export const tmdbService = {
           type: item.media_type === 'movie' ? 'Movie' : 'TV Show',
           // Feature 10 Requirement: Store full date for countdowns
           releaseDate: item.media_type === 'movie' ? item.release_date : item.first_air_date,
-          year: item.media_type === 'movie' 
-            ? item.release_date?.split('-')[0] 
+          year: item.media_type === 'movie'
+            ? item.release_date?.split('-')[0]
             : item.first_air_date?.split('-')[0],
           overview: item.overview,
           posterPath: item.poster_path ? `${TMDB_IMAGE_BASE_URL}${item.poster_path}` : null,
@@ -58,11 +63,7 @@ export const tmdbService = {
 
   async getStreamingProviders(tmdbId, mediaType) {
     try {
-      const response = await tmdbProxy({ 
-        path: `${mediaType}/${tmdbId}/watch/providers` 
-      });
-
-      const data = response.data;
+      const data = await tmdbProxy(`${mediaType}/${tmdbId}/watch/providers`);
       const usProviders = data.results?.US;
 
       if (!usProviders) return [];
@@ -88,12 +89,7 @@ export const tmdbService = {
 
   async getDetails(tmdbId, mediaType) {
     try {
-      const response = await tmdbProxy({ 
-        path: `${mediaType}/${tmdbId}`, 
-        params: { append_to_response: 'credits' } 
-      });
-      
-      const data = response.data;
+      const data = await tmdbProxy(`${mediaType}/${tmdbId}`, { append_to_response: 'credits' });
 
       return {
         id: data.id,
@@ -117,12 +113,7 @@ export const tmdbService = {
 
   async getSeasonDetails(tmdbId, seasonNumber) {
     try {
-      const response = await tmdbProxy({ 
-        path: `tv/${tmdbId}/season/${seasonNumber}`,
-        params: { language: 'en-US' } 
-      });
-      
-      const data = response.data;
+      const data = await tmdbProxy(`tv/${tmdbId}/season/${seasonNumber}`, { language: 'en-US' });
 
       return {
         seasonNumber: data.season_number,
@@ -132,8 +123,8 @@ export const tmdbService = {
           overview: ep.overview,
           airDate: ep.air_date,
           stillPath: ep.still_path ? `${TMDB_IMAGE_BASE_URL}${ep.still_path}` : null,
-          yourRating: 0, 
-          spouseRating: 0 
+          yourRating: 0,
+          spouseRating: 0
         })) || []
       };
     } catch (error) {
@@ -145,16 +136,12 @@ export const tmdbService = {
   // Feature 7: New Method for Trailers
   async getVideos(tmdbId, mediaType) {
     try {
-      const response = await tmdbProxy({
-        path: `${mediaType}/${tmdbId}/videos`,
-        params: { language: 'en-US' }
-      });
-      const data = response.data;
-      
+      const data = await tmdbProxy(`${mediaType}/${tmdbId}/videos`, { language: 'en-US' });
+
       // Look for official Trailer on YouTube
-      const trailer = data.results.find(v => v.site === 'YouTube' && v.type === 'Trailer') || 
+      const trailer = data.results.find(v => v.site === 'YouTube' && v.type === 'Trailer') ||
                       data.results.find(v => v.site === 'YouTube');
-      
+
       return trailer ? trailer.key : null;
     } catch (error) {
       console.error('Error fetching videos:', error);
