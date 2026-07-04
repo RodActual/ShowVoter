@@ -1,13 +1,8 @@
 // src/WatchTogether.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, User, ArrowUpDown, RefreshCw, Dice5, BarChart2, Settings } from 'lucide-react'; // Added Settings Icon
-import { db } from './services/firebase'; 
-import tmdbService from './services/tmdbService'; 
-import { 
-  collection, doc, setDoc, getDoc, onSnapshot, serverTimestamp, deleteDoc 
-} from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
-import { auth } from './services/firebase';
+import api from './services/api';
+import tmdbService from './services/tmdbService';
 
 // Component Imports
 import ToWatchCard from './components/cards/ToWatchCard';
@@ -18,8 +13,6 @@ import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import StatsModal from './components/modals/StatsModal';
 import SettingsModal from './components/modals/SettingsModal'; // NEW IMPORT
-
-const COUPLE_ID = 'pamrod';
 
 const WatchTogether = () => {
   // --- Settings State (New Feature) ---
@@ -58,7 +51,6 @@ const WatchTogether = () => {
     const savedUser = localStorage.getItem('watchTogetherUser');
     if (savedUser) setCurrentUser(savedUser);
     else setShowUserSelect(true);
-    signInAnonymously(auth).catch(err => console.error('Auth error:', err));
   }, []);
 
   // Save settings whenever they change
@@ -68,11 +60,30 @@ const WatchTogether = () => {
 
   useEffect(() => {
     if (!currentUser) return;
-    const unsubToWatch = onSnapshot(collection(db, 'couples', COUPLE_ID, 'toWatch'), (snap) => 
-      setToWatch(snap.docs.map(doc => ({ ...doc.data(), id: doc.id }))));
-    const unsubWatched = onSnapshot(collection(db, 'couples', COUPLE_ID, 'watched'), (snap) => 
-      setWatched(snap.docs.map(doc => ({ ...doc.data(), id: doc.id }))));
-    return () => { unsubToWatch(); unsubWatched(); };
+
+    let active = true;
+    const applyPut = (setter) => (item) => setter(prev => {
+      const idx = prev.findIndex(i => i.id === item.id);
+      if (idx === -1) return [...prev, item];
+      const next = [...prev];
+      next[idx] = item;
+      return next;
+    });
+    const applyDelete = (setter) => (id) => setter(prev => prev.filter(i => i.id !== id));
+
+    api.getCollection('toWatch').then(items => { if (active) setToWatch(items); });
+    api.getCollection('watched').then(items => { if (active) setWatched(items); });
+
+    const unsubToWatch = api.subscribe('toWatch', {
+      onPut: applyPut(setToWatch),
+      onDelete: applyDelete(setToWatch)
+    });
+    const unsubWatched = api.subscribe('watched', {
+      onPut: applyPut(setWatched),
+      onDelete: applyDelete(setWatched)
+    });
+
+    return () => { active = false; unsubToWatch(); unsubWatched(); };
   }, [currentUser]);
 
   const handleSaveSettings = (newSettings) => {
@@ -117,9 +128,9 @@ const WatchTogether = () => {
       releaseDate: selectedShow.releaseDate,
       addedDate: new Date().toISOString().split('T')[0],
       addedBy: currentUser,
-      createdAt: serverTimestamp()
+      createdAt: new Date().toISOString()
     };
-    await setDoc(doc(collection(db, 'couples', COUPLE_ID, 'toWatch')), item);
+    await api.setDoc('toWatch', api.newId(), item);
     setShowAddModal(false);
   };
 
@@ -135,17 +146,17 @@ const WatchTogether = () => {
 
     const existingShow = watched.find(w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType);
     let finalEpisodes = cleanNewEpisodes;
-    let targetDocRef;
+    let targetId;
 
     if (existingShow) {
-      targetDocRef = doc(db, 'couples', COUPLE_ID, 'watched', existingShow.id);
+      targetId = existingShow.id;
       const existingEps = existingShow.episodes || [];
       const episodeMap = new Map();
       existingEps.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
       cleanNewEpisodes.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
       finalEpisodes = Array.from(episodeMap.values());
     } else {
-      targetDocRef = doc(collection(db, 'couples', COUPLE_ID, 'watched'));
+      targetId = api.newId();
     }
 
     let finalAnthony = anthonyRating, finalPam = pamRating;
@@ -156,7 +167,7 @@ const WatchTogether = () => {
       if (pamEps.length) finalPam = Math.round(pamEps.reduce((acc, e) => acc + e.pamRating, 0) / pamEps.length);
     }
 
-    await setDoc(targetDocRef, {
+    await api.setDoc('watched', targetId, {
       ...itemData,
       anthonyRating: finalAnthony,
       pamRating: finalPam,
@@ -164,13 +175,13 @@ const WatchTogether = () => {
       episodes: finalEpisodes.length > 0 ? finalEpisodes : null,
       ratedBy: currentUser,
       status: isDNF ? 'DNF' : 'Completed',
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+      updatedAt: new Date().toISOString()
+    });
 
     const isMovie = itemToRate.type === 'Movie' || itemToRate.mediaType === 'movie';
     const allFinished = episodes.length === 0 || episodes.every(ep => ep.isSelected);
     if (isMovie || allFinished || isDNF) {
-      await deleteDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', itemToRate.id));
+      await api.deleteDoc('toWatch', itemToRate.id);
     }
     
     setShowRatingModal(false);
@@ -212,7 +223,7 @@ const WatchTogether = () => {
 
         const details = await tmdbService.getDetails(show.tmdbId, 'tv');
         if (details && details.numberOfEpisodes > (show.episodes ? show.episodes.length : 0)) {
-          await setDoc(doc(collection(db, 'couples', COUPLE_ID, 'toWatch')), {
+          await api.setDoc('toWatch', api.newId(), {
             title: show.title,
             type: 'TV Show',
             service: show.service || 'Unknown',
@@ -221,7 +232,7 @@ const WatchTogether = () => {
             posterPath: show.posterPath, overview: show.overview,
             rating: show.rating, year: show.year,
             addedDate: new Date().toISOString().split('T')[0],
-            addedBy: 'System', createdAt: serverTimestamp(),
+            addedBy: 'System', createdAt: new Date().toISOString(),
             isNewEpisodes: true
           });
           updatesCount++;
@@ -233,22 +244,20 @@ const WatchTogether = () => {
     setIsCheckingUpdates(false);
   };
 
-  const handleDeleteItem = (id) => deleteDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', id));
-  const handleDeleteWatched = (id) => deleteDoc(doc(db, 'couples', COUPLE_ID, 'watched', id));
+  const handleDeleteItem = (id) => api.deleteDoc('toWatch', id);
+  const handleDeleteWatched = (id) => api.deleteDoc('watched', id);
   const handleSaveToWatch = async (id, data) => {
-    await setDoc(doc(db, 'couples', COUPLE_ID, 'toWatch', id), data, { merge: true });
+    await api.setDoc('toWatch', id, data);
     setEditingToWatchId(null);
   };
   const handleSaveWatched = async (id, data) => {
-    await setDoc(doc(db, 'couples', COUPLE_ID, 'watched', id), data, { merge: true });
+    await api.setDoc('watched', id, data);
     setEditingWatchedId(null);
   };
 
   const handleUpdateEpisodeRating = async (showId, episodeNum, user, newRating) => {
-    const showRef = doc(db, 'couples', COUPLE_ID, 'watched', showId);
-    const showDoc = await getDoc(showRef);
-    if (showDoc.exists()) {
-      const data = showDoc.data();
+    const data = await api.getDoc('watched', showId).catch(() => null);
+    if (data) {
       const updatedEpisodes = data.episodes.map(ep => {
         const isMatch = (ep.season === episodeNum.season && ep.num === episodeNum.num) || (!ep.season && ep.num === episodeNum.num);
         return isMatch ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: newRating } : ep;
@@ -256,7 +265,7 @@ const WatchTogether = () => {
       const userField = user === 'Anthony' ? 'anthonyRating' : 'pamRating';
       const ratedEps = updatedEpisodes.filter(ep => (ep[userField] || 0) > 0);
       const newAvg = ratedEps.length > 0 ? Math.round(ratedEps.reduce((acc, e) => acc + (e[userField] || 0), 0) / ratedEps.length) : data[userField];
-      await setDoc(showRef, { episodes: updatedEpisodes, [userField]: newAvg }, { merge: true });
+      await api.setDoc('watched', showId, { episodes: updatedEpisodes, [userField]: newAvg });
     }
   };
 

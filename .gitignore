@@ -54,11 +54,9 @@ logs
 .DS_Store
 Thumbs.db
 
-# ---- Firebase ----
-# Firebase cache and config
-.firebase/
-.firebaserc
-backend/serviceAccountKey.json
+# ---- Self-hosted server ----
+server/data.sqlite
+server/data.sqlite-*
 
 # ---- IDE / Tooling ----
 .vscode/
