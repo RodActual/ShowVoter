@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Save, RotateCcw } from 'lucide-react';
+import { DEFAULT_SETTINGS } from '../../users';
 
 const SettingsModal = ({ currentSettings, onClose, onSave }) => {
   // Initialize state with current settings
@@ -10,12 +11,7 @@ const SettingsModal = ({ currentSettings, onClose, onSave }) => {
   };
 
   const handleReset = () => {
-    setSettings({
-      user1Name: 'Anthony',
-      user1Color: '#2563EB', // Blue-600
-      user2Name: 'Pam',
-      user2Color: '#DB2777'  // Pink-600
-    });
+    setSettings(DEFAULT_SETTINGS);
   };
 
   return (

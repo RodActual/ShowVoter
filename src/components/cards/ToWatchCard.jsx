@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Star, Trash2, Edit2, Check, ExternalLink, Play } from 'lucide-react';
 import PriorityRating from '../common/PriorityRating';
 import tmdbService from '../../services/tmdbService';
+import { resolveUserKey, userColor, userName } from '../../users';
 
 const ToWatchCard = ({ 
   item, 
-  currentUser, 
-  settings, // Contains user1Name, user1Color, etc.
+  currentUser, // 'user1' | 'user2'
+  settings,
   isEditing, 
   onToggleEdit, 
   onDelete, 
@@ -112,9 +113,10 @@ const ToWatchCard = ({
     return `https://www.google.com/search?q=${query}`;
   };
 
-  // Determine which user added it for badge color
-  const isUser1Added = item.addedBy === settings.user1Name;
-  const addedBadgeColor = isUser1Added ? settings.user1Color : settings.user2Color;
+  // "Who picked this" badge. Older items store a name instead of a key; 'System' has no user.
+  const addedByKey = resolveUserKey(item.addedBy, settings);
+  const addedByLabel = addedByKey ? userName(settings, addedByKey) : item.addedBy;
+  const addedBadgeColor = addedByKey ? userColor(settings, addedByKey) : '#4B5563';
 
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-3 border border-gray-700 overflow-hidden relative">
@@ -125,7 +127,7 @@ const ToWatchCard = ({
           className="absolute top-0 right-0 px-2 py-1 text-[10px] font-bold rounded-bl-lg z-10 text-white shadow-sm"
           style={{ backgroundColor: addedBadgeColor }}
         >
-          {item.addedBy}
+          {addedByLabel}
         </div>
       )}
 
@@ -208,22 +210,22 @@ const ToWatchCard = ({
       {/* Priority Sliders with Dynamic Names & Colors */}
       <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-700">
         <div>
-          <div className="text-xs font-bold mb-1" style={{ color: settings.user1Color }}>
-            {settings.user1Name}
+          <div className="text-xs font-bold mb-1" style={{ color: userColor(settings, 'user1') }}>
+            {userName(settings, 'user1')}
           </div>
           <PriorityRating 
             rating={localPriorities.anthony} 
-            editable={isEditing && currentUser === settings.user1Name} 
+            editable={isEditing && currentUser === 'user1'} 
             onRate={(r) => handlePriorityChange('anthony', r)}
           />
         </div>
         <div>
-          <div className="text-xs font-bold mb-1" style={{ color: settings.user2Color }}>
-            {settings.user2Name}
+          <div className="text-xs font-bold mb-1" style={{ color: userColor(settings, 'user2') }}>
+            {userName(settings, 'user2')}
           </div>
           <PriorityRating 
             rating={localPriorities.pam} 
-            editable={isEditing && currentUser === settings.user2Name} 
+            editable={isEditing && currentUser === 'user2'} 
             onRate={(r) => handlePriorityChange('pam', r)}
           />
         </div>

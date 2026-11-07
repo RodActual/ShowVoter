@@ -12,20 +12,26 @@ import RatingModal from './components/modals/RatingModal';
 import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import StatsModal from './components/modals/StatsModal';
-import SettingsModal from './components/modals/SettingsModal'; // NEW IMPORT
+import SettingsModal from './components/modals/SettingsModal';
+import { DEFAULT_SETTINGS, USER_KEYS, resolveUserKey, userName } from './users';
+
+const SETTINGS_CACHE_KEY = 'watchTogetherSettings';
+const CURRENT_USER_KEY = 'watchTogetherUser';
+
+function readCachedSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_CACHE_KEY));
+    return saved && typeof saved === 'object' ? { ...DEFAULT_SETTINGS, ...saved } : DEFAULT_SETTINGS;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
 
 const WatchTogether = () => {
-  // --- Settings State (New Feature) ---
-  const [appSettings, setAppSettings] = useState(() => {
-    const saved = localStorage.getItem('watchTogetherSettings');
-    return saved ? JSON.parse(saved) : {
-      user1Name: 'Anthony',
-      user1Color: '#2563EB', // Default Blue
-      user2Name: 'Pam',
-      user2Color: '#DB2777'  // Default Pink
-    };
-  });
+  // Settings are shared through the server ('settings/app'); localStorage is only a cache for first paint.
+  const [appSettings, setAppSettings] = useState(readCachedSettings);
 
+  // currentUser is a stable key: 'user1' | 'user2'
   const [currentUser, setCurrentUser] = useState(null);
   const [showUserSelect, setShowUserSelect] = useState(false);
   const [activeTab, setActiveTab] = useState('toWatch');
@@ -48,15 +54,29 @@ const WatchTogether = () => {
   const [watched, setWatched] = useState([]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('watchTogetherUser');
-    if (savedUser) setCurrentUser(savedUser);
-    else setShowUserSelect(true);
+    // Older versions saved the display name here; migrate it to a key.
+    const savedUser = resolveUserKey(localStorage.getItem(CURRENT_USER_KEY), readCachedSettings());
+    if (savedUser) {
+      setCurrentUser(savedUser);
+      localStorage.setItem(CURRENT_USER_KEY, savedUser);
+    } else {
+      setShowUserSelect(true);
+    }
   }, []);
 
-  // Save settings whenever they change
   useEffect(() => {
-    localStorage.setItem('watchTogetherSettings', JSON.stringify(appSettings));
+    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(appSettings)); } catch { /* storage full or blocked */ }
   }, [appSettings]);
+
+  useEffect(() => {
+    const applySettings = (doc) => {
+      if (!doc) return;
+      const { id, ...rest } = doc;
+      setAppSettings({ ...DEFAULT_SETTINGS, ...rest });
+    };
+    api.getDoc('settings', 'app').then(applySettings).catch(() => { /* not saved yet: keep cache/defaults */ });
+    return api.subscribe('settings', { onPut: applySettings, onDelete: () => setAppSettings(DEFAULT_SETTINGS) });
+  }, []);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -86,29 +106,17 @@ const WatchTogether = () => {
     return () => { active = false; unsubToWatch(); unsubWatched(); };
   }, [currentUser]);
 
-  const handleSaveSettings = (newSettings) => {
+  const handleSaveSettings = async (newSettings) => {
     setAppSettings(newSettings);
     setShowSettingsModal(false);
-    
-    // If current user name changed, update current session
-    if (currentUser === appSettings.user1Name && newSettings.user1Name !== appSettings.user1Name) {
-      setCurrentUser(newSettings.user1Name);
-      localStorage.setItem('watchTogetherUser', newSettings.user1Name);
-    }
-    if (currentUser === appSettings.user2Name && newSettings.user2Name !== appSettings.user2Name) {
-      setCurrentUser(newSettings.user2Name);
-      localStorage.setItem('watchTogetherUser', newSettings.user2Name);
-    }
+    await api.setDoc('settings', 'app', newSettings);
   };
 
-  const handleUserSelect = (user) => {
-    setCurrentUser(user);
-    localStorage.setItem('watchTogetherUser', user);
+  const handleUserSelect = (userKey) => {
+    if (!USER_KEYS.includes(userKey)) return;
+    setCurrentUser(userKey);
+    localStorage.setItem(CURRENT_USER_KEY, userKey);
     setShowUserSelect(false);
-  };
-
-  const handleSwitchUser = () => {
-    setShowUserSelect(true);
   };
 
   const handleAddItem = async (selectedShow, selectedService) => {
@@ -255,20 +263,6 @@ const WatchTogether = () => {
     setEditingWatchedId(null);
   };
 
-  const handleUpdateEpisodeRating = async (showId, episodeNum, user, newRating) => {
-    const data = await api.getDoc('watched', showId).catch(() => null);
-    if (data) {
-      const updatedEpisodes = data.episodes.map(ep => {
-        const isMatch = (ep.season === episodeNum.season && ep.num === episodeNum.num) || (!ep.season && ep.num === episodeNum.num);
-        return isMatch ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: newRating } : ep;
-      });
-      const userField = user === 'Anthony' ? 'anthonyRating' : 'pamRating';
-      const ratedEps = updatedEpisodes.filter(ep => (ep[userField] || 0) > 0);
-      const newAvg = ratedEps.length > 0 ? Math.round(ratedEps.reduce((acc, e) => acc + (e[userField] || 0), 0) / ratedEps.length) : data[userField];
-      await api.setDoc('watched', showId, { episodes: updatedEpisodes, [userField]: newAvg });
-    }
-  };
-
   const getSortedItems = (items, type) => {
     return [...items].sort((a, b) => {
       if (sortMethod === 'status') {
@@ -305,7 +299,7 @@ const WatchTogether = () => {
       {/* Dynamic Header */}
       <div style={headerStyle} className="text-white p-6 shadow-lg">
         <div className="flex justify-between items-center mb-2">
-          <div><h1 className="text-2xl font-bold">Watch Together</h1><p className="text-sm opacity-80">Current: {currentUser}</p></div>
+          <div><h1 className="text-2xl font-bold">Watch Together</h1><p className="text-sm opacity-80">Current: {userName(appSettings, currentUser)}</p></div>
           <div className="flex gap-2">
             <button onClick={() => setShowSettingsModal(true)} className="text-white hover:text-gray-200 p-2"><Settings size={20} /></button>
             <button onClick={() => setShowUserSelect(true)} className="text-white hover:text-gray-200 p-2"><User size={20} /></button>
@@ -363,7 +357,7 @@ const WatchTogether = () => {
                   key={item.id} 
                   item={item} 
                   currentUser={currentUser}
-                  settings={appSettings} // PASS SETTINGS HERE
+                  settings={appSettings}
                   isEditing={editingToWatchId === item.id}
                   onToggleEdit={() => setEditingToWatchId(editingToWatchId === item.id ? null : item.id)}
                   onDelete={handleDeleteItem}
@@ -380,14 +374,13 @@ const WatchTogether = () => {
                 key={item.id} 
                 item={item} 
                 currentUser={currentUser}
-                settings={appSettings} // PASS SETTINGS HERE
+                settings={appSettings}
                 isEditing={editingWatchedId === item.id}
                 onToggleEdit={() => setEditingWatchedId(editingWatchedId === item.id ? null : item.id)}
                 onDelete={handleDeleteWatched}
                 expandedShow={expandedShow}
                 setExpandedShow={setExpandedShow}
                 onSave={handleSaveWatched}
-                onUpdateEpisodeRating={handleUpdateEpisodeRating}
               />
             ))
           )
@@ -399,7 +392,7 @@ const WatchTogether = () => {
       {showRatingModal && <RatingModal 
         item={itemToRate} 
         currentUser={currentUser} 
-        settings={appSettings} // PASS SETTINGS HERE
+        settings={appSettings}
         watchedHistory={watched}
         onClose={() => setShowRatingModal(false)} 
         onSubmit={handleSubmitRating} 

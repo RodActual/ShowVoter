@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp, CheckSquare, Square, Ban } from 'lucide-react';
 import StarRating from '../common/StarRating';
 import tmdbService from '../../services/tmdbService';
+import { ratingField, userName } from '../../users';
 
-const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) => {
+const RatingModal = ({ item, currentUser, settings, watchedHistory, onClose, onSubmit }) => {
   const [anthonyRating, setAnthonyRating] = useState(3);
   const [pamRating, setPamRating] = useState(3);
   const [numEpisodes, setNumEpisodes] = useState(0);
@@ -85,10 +86,10 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
   };
 
   // --- Handlers for episode interaction ---
-  const handleEpisodeRatingChange = (epNum, seasonNum, user, rating) => {
+  const handleEpisodeRatingChange = (epNum, seasonNum, userKey, rating) => {
     setEpisodes(prev => prev.map(ep =>
       (ep.num === epNum && (ep.season === seasonNum || !ep.season))
-        ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: rating }
+        ? { ...ep, [ratingField(userKey)]: rating }
         : ep
     ));
   };
@@ -133,12 +134,12 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
             <h3 className="font-semibold mb-3 text-white">Overall Rating (1-10 stars)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="text-sm text-gray-300 mb-2">Anthony's Rating</div>
-                <StarRating rating={anthonyRating} editable={currentUser === 'Anthony'} onRate={setAnthonyRating} size={28} />
+                <div className="text-sm text-gray-300 mb-2">{userName(settings, 'user1')}'s Rating</div>
+                <StarRating rating={anthonyRating} editable={currentUser === 'user1'} onRate={setAnthonyRating} size={28} />
               </div>
               <div>
-                <div className="text-sm text-gray-300 mb-2">Pam's Rating</div>
-                <StarRating rating={pamRating} editable={currentUser === 'Pam'} onRate={setPamRating} size={28} />
+                <div className="text-sm text-gray-300 mb-2">{userName(settings, 'user2')}'s Rating</div>
+                <StarRating rating={pamRating} editable={currentUser === 'user2'} onRate={setPamRating} size={28} />
               </div>
             </div>
           </div>
@@ -199,8 +200,8 @@ const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) =
                                 </div>
                                 {ep.isSelected && (
                                   <div className="grid grid-cols-2 gap-3 text-xs pl-7">
-                                    <div><div className="text-gray-300 mb-1">Anthony</div><StarRating rating={ep.anthonyRating} maxStars={10} size={18} editable={currentUser === 'Anthony'} onRate={(r) => handleEpisodeRatingChange(ep.num, ep.season, 'Anthony', r)} /></div>
-                                    <div><div className="text-gray-300 mb-1">Pam</div><StarRating rating={ep.pamRating} maxStars={10} size={18} editable={currentUser === 'Pam'} onRate={(r) => handleEpisodeRatingChange(ep.num, ep.season, 'Pam', r)} /></div>
+                                    <div><div className="text-gray-300 mb-1">{userName(settings, 'user1')}</div><StarRating rating={ep.anthonyRating} maxStars={10} size={18} editable={currentUser === 'user1'} onRate={(r) => handleEpisodeRatingChange(ep.num, ep.season, 'user1', r)} /></div>
+                                    <div><div className="text-gray-300 mb-1">{userName(settings, 'user2')}</div><StarRating rating={ep.pamRating} maxStars={10} size={18} editable={currentUser === 'user2'} onRate={(r) => handleEpisodeRatingChange(ep.num, ep.season, 'user2', r)} /></div>
                                   </div>
                                 )}
                               </div>

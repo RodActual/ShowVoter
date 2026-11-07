@@ -1,7 +1,11 @@
 import React from 'react';
 import { X, Trophy, TrendingUp, Frown, Film } from 'lucide-react';
+import { DEFAULT_SETTINGS, userColor, userName } from '../../users';
 
-const StatsModal = ({ watched, onClose }) => {
+const StatsModal = ({ watched, settings = DEFAULT_SETTINGS, onClose }) => {
+  const name1 = userName(settings, 'user1');
+  const name2 = userName(settings, 'user2');
+
   const calculateStats = () => {
     if (!watched || watched.length === 0) return null;
 
@@ -60,12 +64,12 @@ const StatsModal = ({ watched, onClose }) => {
             {/* Averages */}
             <div className="grid grid-cols-2 gap-4 bg-gray-700 p-4 rounded-lg">
               <div className="text-center border-r border-gray-600">
-                <div className="text-3xl font-bold text-blue-400">{stats.anthonyAvg}</div>
-                <div className="text-xs text-gray-300 uppercase tracking-wider mt-1">Ant's Avg</div>
+                <div className="text-3xl font-bold" style={{ color: userColor(settings, 'user1') }}>{stats.anthonyAvg}</div>
+                <div className="text-xs text-gray-300 uppercase tracking-wider mt-1">{name1}'s Avg</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-pink-400">{stats.pamAvg}</div>
-                <div className="text-xs text-gray-300 uppercase tracking-wider mt-1">Pam's Avg</div>
+                <div className="text-3xl font-bold" style={{ color: userColor(settings, 'user2') }}>{stats.pamAvg}</div>
+                <div className="text-xs text-gray-300 uppercase tracking-wider mt-1">{name2}'s Avg</div>
               </div>
             </div>
 
@@ -76,7 +80,7 @@ const StatsModal = ({ watched, onClose }) => {
                   <Trophy size={18} /> <span className="font-bold">The Nicest</span>
                 </div>
                 <span className="text-white font-medium">
-                  {parseFloat(stats.anthonyAvg) > parseFloat(stats.pamAvg) ? 'Anthony' : parseFloat(stats.anthonyAvg) < parseFloat(stats.pamAvg) ? 'Pam' : 'Tie!'}
+                  {parseFloat(stats.anthonyAvg) > parseFloat(stats.pamAvg) ? name1 : parseFloat(stats.anthonyAvg) < parseFloat(stats.pamAvg) ? name2 : 'Tie!'}
                 </span>
               </div>
               
@@ -86,7 +90,7 @@ const StatsModal = ({ watched, onClose }) => {
                 </div>
                 <div className="text-sm text-gray-400 text-right">
                   <span className="block text-white font-medium">
-                    {stats.anthonyCritic > stats.pamCritic ? 'Anthony' : stats.pamCritic > stats.anthonyCritic ? 'Pam' : 'Tie!'}
+                    {stats.anthonyCritic > stats.pamCritic ? name1 : stats.pamCritic > stats.anthonyCritic ? name2 : 'Tie!'}
                   </span>
                   <span className="text-xs opacity-75">
                     (Ratings ≤ 4)

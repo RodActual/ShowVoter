@@ -11,14 +11,14 @@ const UserSelectModal = ({ onSelectUser, settings }) => {
         
         <div className="space-y-3">
           <button
-            onClick={() => onSelectUser(settings.user1Name)}
+            onClick={() => onSelectUser('user1')}
             style={{ backgroundColor: settings.user1Color }}
             className="w-full text-white py-4 px-6 rounded-lg hover:opacity-90 font-semibold text-lg transition"
           >
             {settings.user1Name}
           </button>
           <button
-            onClick={() => onSelectUser(settings.user2Name)}
+            onClick={() => onSelectUser('user2')}
             style={{ backgroundColor: settings.user2Color }}
             className="w-full text-white py-4 px-6 rounded-lg hover:opacity-90 font-semibold text-lg transition"
           >

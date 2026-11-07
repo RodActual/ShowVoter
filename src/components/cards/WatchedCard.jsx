@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2, ChevronUp, ChevronDown, Ban } from 'lucide-react';
 import StarRating from '../common/StarRating';
+import { ratingField, userColor, userName } from '../../users';
 
 const WatchedCard = ({ 
   item, 
-  currentUser, 
-  settings, // Contains user1Name, user1Color, etc.
+  currentUser, // 'user1' | 'user2'
+  settings,
   isEditing, 
   onToggleEdit, 
   onDelete, 
@@ -37,15 +38,15 @@ const WatchedCard = ({
     setLocalRatings(prev => ({ ...prev, [userKey]: value }));
   };
 
-  const handleEpisodeChange = (episodeNum, seasonNum, user, newRating) => {
+  const handleEpisodeChange = (episodeNum, seasonNum, userKey, newRating) => {
+    const dbField = ratingField(userKey);
+    const localKey = userKey === 'user1' ? 'anthony' : 'pam';
     // 1. Update the specific episode in the local list
     const updatedEpisodes = localEpisodes.map(ep => {
       const isMatch = (ep.season === seasonNum && ep.num === episodeNum) || 
                       (!ep.season && ep.num === episodeNum);
       
       if (isMatch) {
-        // Map user Name to DB Key (anthonyRating / pamRating)
-        const dbField = user === settings.user1Name ? 'anthonyRating' : 'pamRating';
         return { ...ep, [dbField]: newRating };
       }
       return ep;
@@ -53,14 +54,12 @@ const WatchedCard = ({
     setLocalEpisodes(updatedEpisodes);
 
     // 2. Auto-recalculate Top Level Average for that user locally
-    const dbField = user === settings.user1Name ? 'anthonyRating' : 'pamRating';
     const ratedEps = updatedEpisodes.filter(ep => (ep[dbField] || 0) > 0);
     
     if (ratedEps.length > 0) {
       const sum = ratedEps.reduce((acc, ep) => acc + (ep[dbField] || 0), 0);
       const newAvg = Math.round(sum / ratedEps.length);
-      // Map user Name to Local State Key ('anthony' / 'pam')
-      handleShowRatingChange(user === settings.user1Name ? 'anthony' : 'pam', newAvg);
+      handleShowRatingChange(localKey, newAvg);
     }
   };
 
@@ -137,18 +136,18 @@ const WatchedCard = ({
       {!isDNF && (
         <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-700">
           <div>
-            <div className="text-xs font-bold mb-1" style={{ color: settings.user1Color }}>{settings.user1Name}</div>
+            <div className="text-xs font-bold mb-1" style={{ color: userColor(settings, 'user1') }}>{userName(settings, 'user1')}</div>
             <StarRating 
               rating={localRatings.anthony} 
-              editable={isEditing && currentUser === settings.user1Name} 
+              editable={isEditing && currentUser === 'user1'} 
               onRate={(r) => handleShowRatingChange('anthony', r)}
             />
           </div>
           <div>
-            <div className="text-xs font-bold mb-1" style={{ color: settings.user2Color }}>{settings.user2Name}</div>
+            <div className="text-xs font-bold mb-1" style={{ color: userColor(settings, 'user2') }}>{userName(settings, 'user2')}</div>
             <StarRating 
               rating={localRatings.pam} 
-              editable={isEditing && currentUser === settings.user2Name} 
+              editable={isEditing && currentUser === 'user2'} 
               onRate={(r) => handleShowRatingChange('pam', r)}
             />
           </div>
@@ -199,23 +198,23 @@ const WatchedCard = ({
                         </div>
                         <div className="grid grid-cols-2 gap-3 text-xs">
                           <div>
-                            <div className="mb-1" style={{ color: settings.user1Color }}>{settings.user1Name}</div>
+                            <div className="mb-1" style={{ color: userColor(settings, 'user1') }}>{userName(settings, 'user1')}</div>
                             <StarRating 
                               rating={ep.anthonyRating} 
                               maxStars={10} 
                               size={16}
-                              editable={isEditing && currentUser === settings.user1Name} 
-                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, settings.user1Name, r)}
+                              editable={isEditing && currentUser === 'user1'} 
+                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, 'user1', r)}
                             />
                           </div>
                           <div>
-                            <div className="mb-1" style={{ color: settings.user2Color }}>{settings.user2Name}</div>
+                            <div className="mb-1" style={{ color: userColor(settings, 'user2') }}>{userName(settings, 'user2')}</div>
                             <StarRating 
                               rating={ep.pamRating} 
                               maxStars={10} 
                               size={16}
-                              editable={isEditing && currentUser === settings.user2Name} 
-                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, settings.user2Name, r)}
+                              editable={isEditing && currentUser === 'user2'} 
+                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, 'user2', r)}
                             />
                           </div>
                         </div>
