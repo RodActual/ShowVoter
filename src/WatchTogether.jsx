@@ -13,7 +13,7 @@ import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import StatsModal from './components/modals/StatsModal';
 import SettingsModal from './components/modals/SettingsModal';
-import { DEFAULT_SETTINGS, USER_KEYS, resolveUserKey, userName } from './users';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, ratingField, resolveUserKey, userName } from './users';
 
 const SETTINGS_CACHE_KEY = 'watchTogetherSettings';
 const CURRENT_USER_KEY = 'watchTogetherUser';
@@ -149,49 +149,46 @@ const WatchTogether = () => {
 
   const handleSubmitRating = async (anthonyRating, pamRating, episodes = [], isDNF = false) => {
     const { id, ...itemData } = itemToRate;
-    const newSelectedEpisodes = episodes.filter(ep => ep.isSelected);
-    const cleanNewEpisodes = newSelectedEpisodes.map(({ isSelected, ...ep }) => ep);
+    const myField = ratingField(currentUser);
+    const otherField = ratingField(currentUser === 'user1' ? 'user2' : 'user1');
+    const myOverall = (currentUser === 'user1' ? anthonyRating : pamRating) || 0;
 
+    const cleanNewEpisodes = episodes.filter(ep => ep.isSelected).map(({ isSelected, ...ep }) => ep);
     const existingShow = watched.find(w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType);
-    let finalEpisodes = cleanNewEpisodes;
-    let targetId;
 
+    let finalEpisodes = cleanNewEpisodes;
     if (existingShow) {
-      targetId = existingShow.id;
-      const existingEps = existingShow.episodes || [];
       const episodeMap = new Map();
-      existingEps.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
+      (existingShow.episodes || []).forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
       cleanNewEpisodes.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
       finalEpisodes = Array.from(episodeMap.values());
-    } else {
-      targetId = api.newId();
     }
 
-    let finalAnthony = anthonyRating, finalPam = pamRating;
-    if (finalEpisodes.length > 0 && !isDNF) {
-      const antEps = finalEpisodes.filter(e => (e.anthonyRating || 0) > 0);
-      if (antEps.length) finalAnthony = Math.round(antEps.reduce((acc, e) => acc + e.anthonyRating, 0) / antEps.length);
-      const pamEps = finalEpisodes.filter(e => (e.pamRating || 0) > 0);
-      if (pamEps.length) finalPam = Math.round(pamEps.reduce((acc, e) => acc + e.pamRating, 0) / pamEps.length);
-    }
+    // My overall rating: what I picked, else my episode average, else what was already saved.
+    let myRating = myOverall;
+    if (!myRating && !isDNF) myRating = Math.round(averageRating(...finalEpisodes.map(e => e[myField])));
+    if (!myRating && existingShow) myRating = existingShow[myField] || 0;
 
-    await api.setDoc('watched', targetId, {
+    const doc = {
       ...itemData,
-      anthonyRating: finalAnthony,
-      pamRating: finalPam,
+      [myField]: myRating,
       watchedDate: new Date().toISOString().split('T')[0],
       episodes: finalEpisodes.length > 0 ? finalEpisodes : null,
       ratedBy: currentUser,
       status: isDNF ? 'DNF' : 'Completed',
       updatedAt: new Date().toISOString()
-    });
+    };
+    // Never overwrite the partner's saved rating; start it unrated on a new entry.
+    if (!existingShow) doc[otherField] = 0;
+
+    await api.setDoc('watched', existingShow ? existingShow.id : api.newId(), doc);
 
     const isMovie = itemToRate.type === 'Movie' || itemToRate.mediaType === 'movie';
     const allFinished = episodes.length === 0 || episodes.every(ep => ep.isSelected);
     if (isMovie || allFinished || isDNF) {
       await api.deleteDoc('toWatch', itemToRate.id);
     }
-    
+
     setShowRatingModal(false);
     setItemToRate(null);
   };
@@ -275,10 +272,7 @@ const WatchTogether = () => {
       if (sortMethod === 'service') return (a.service || '').localeCompare(b.service || '');
       
       const calcPrio = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
-      const calcRating = (i) => {
-        const ant = i.anthonyRating || 0, pam = i.pamRating || 0;
-        return pam > 0 ? (ant + pam) / 2 : ant;
-      };
+      const calcRating = (i) => averageRating(i.anthonyRating, i.pamRating);
       
       return type === 'toWatch' ? calcPrio(b) - calcPrio(a) : calcRating(b) - calcRating(a);
     });

@@ -5,9 +5,16 @@ import StarRating from '../common/StarRating';
 import tmdbService from '../../services/tmdbService';
 import { ratingField, userName } from '../../users';
 
+// YYYY-MM-DD in the viewer's time zone, comparable with TMDB air dates.
+function localDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const RatingModal = ({ item, currentUser, settings, watchedHistory, onClose, onSubmit }) => {
-  const [anthonyRating, setAnthonyRating] = useState(3);
-  const [pamRating, setPamRating] = useState(3);
+  // 0 = not rated. Only the signed-in user can rate here; the partner rates later from their device.
+  const [anthonyRating, setAnthonyRating] = useState(0);
+  const [pamRating, setPamRating] = useState(0);
   const [numEpisodes, setNumEpisodes] = useState(0);
   const [episodes, setEpisodes] = useState([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -37,28 +44,28 @@ const RatingModal = ({ item, currentUser, settings, watchedHistory, onClose, onS
         existingShow.episodes.forEach(ep => watchedSet.add(`${ep.season}-${ep.num}`));
       }
 
+      // 2. Fetch all seasons in parallel
+      const seasonNumbers = Array.from({ length: totalSeasons }, (_, i) => i + 1);
+      const seasons = await Promise.all(seasonNumbers.map(n => tmdbService.getSeasonDetails(item.tmdbId, n)));
+      const today = localDateString();
+
       let allEpisodes = [];
-      // 2. Fetch all seasons
-      for (let i = 1; i <= totalSeasons; i++) {
-        const seasonData = await tmdbService.getSeasonDetails(item.tmdbId, i);
-        if (seasonData?.episodes) {
-          const currentSeasonEps = seasonData.episodes
-            // 3. Filter OUT previously watched episodes
-            .filter(ep => {
-              const epNum = ep.num || ep.episode_number;
-              return !watchedSet.has(`${i}-${epNum}`);
-            })
-            .map((ep, index) => ({
-              season: i,
-              num: ep.num || ep.episode_number || (index + 1),
-              title: ep.title || ep.name || `Episode ${index + 1}`,
-              anthonyRating: 5,
-              pamRating: 5,
-              isSelected: true
-            }));
-          allEpisodes = [...allEpisodes, ...currentSeasonEps];
-        }
-      }
+      seasons.forEach((seasonData, idx) => {
+        const i = seasonNumbers[idx];
+        if (!seasonData?.episodes) return;
+        const currentSeasonEps = seasonData.episodes
+          // 3. Skip previously watched and not-yet-aired episodes
+          .filter(ep => !watchedSet.has(`${i}-${ep.num}`) && ep.airDate && ep.airDate <= today)
+          .map((ep, index) => ({
+            season: i,
+            num: ep.num || (index + 1),
+            title: ep.title || `Episode ${index + 1}`,
+            anthonyRating: 0,
+            pamRating: 0,
+            isSelected: true
+          }));
+        allEpisodes = [...allEpisodes, ...currentSeasonEps];
+      });
 
       if (allEpisodes.length > 0) {
         setEpisodes(allEpisodes);
@@ -78,8 +85,8 @@ const RatingModal = ({ item, currentUser, settings, watchedHistory, onClose, onS
     const newEps = Array.from({ length: numEpisodes }, (_, i) => ({
       num: i + 1,
       title: `Episode ${i + 1}`,
-      anthonyRating: 5,
-      pamRating: 5,
+      anthonyRating: 0,
+      pamRating: 0,
       isSelected: true
     }));
     setEpisodes(newEps);
@@ -147,7 +154,7 @@ const RatingModal = ({ item, currentUser, settings, watchedHistory, onClose, onS
           {(item?.type === 'TV Show' || item?.mediaType === 'tv') && (
             <div className={`bg-blue-900 bg-opacity-40 p-4 rounded border border-blue-800 ${isDNF ? 'opacity-50 pointer-events-none' : ''}`}>
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold text-white">Episodes (Unwatched)</h3>
+                <h3 className="font-semibold text-white">Episodes (Aired, Unwatched)</h3>
                 <div className="flex gap-2 text-xs">
                   <button onClick={() => toggleAllSelection(true)} className="text-blue-300 hover:text-blue-200 underline">Select All</button>
                   <span className="text-gray-500">|</span>

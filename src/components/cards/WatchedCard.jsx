@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2, ChevronUp, ChevronDown, Ban } from 'lucide-react';
 import StarRating from '../common/StarRating';
-import { ratingField, userColor, userName } from '../../users';
+import { averageRating, ratingField, userColor, userName } from '../../users';
 
 const WatchedCard = ({ 
   item, 
@@ -64,14 +64,15 @@ const WatchedCard = ({
   };
 
   const handleDone = () => {
+    // Save only my own overall rating so a stale copy can't overwrite my partner's.
+    const myLocalKey = currentUser === 'user1' ? 'anthony' : 'pam';
     onSave(item.id, {
-      anthonyRating: localRatings.anthony,
-      pamRating: localRatings.pam,
+      [ratingField(currentUser)]: localRatings[myLocalKey],
       episodes: localEpisodes
     });
   };
 
-  const avgRating = localRatings.pam ? ((localRatings.anthony + localRatings.pam) / 2).toFixed(1) : localRatings.anthony;
+  const avgRating = averageRating(localRatings.anthony, localRatings.pam).toFixed(1);
   
   const episodesBySeason = localEpisodes.reduce((acc, ep) => {
     const s = ep.season || 1;
@@ -193,7 +194,7 @@ const WatchedCard = ({
                             </span>
                           </div>
                           <div className="text-sm font-semibold text-gray-300">
-                            {(((ep.anthonyRating || 0) + (ep.pamRating || 0)) / 2).toFixed(1)}/10
+                            {averageRating(ep.anthonyRating, ep.pamRating).toFixed(1)}/10
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 text-xs">
