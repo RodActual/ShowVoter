@@ -4,15 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const express = require('express');
-const cors = require('cors');
 const { WebSocketServer } = require('ws');
 
 const db = require('./db');
+const auth = require('./auth');
 
 const PORT = process.env.PORT || 4000;
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
-const APP_TOKEN = process.env.APP_TOKEN;
-const ALLOWED_COLLECTIONS = new Set(['toWatch', 'watched']);
+const ALLOWED_COLLECTIONS = new Set(['toWatch', 'watched', 'settings']);
 
 const selectAllStmt = db.prepare('SELECT id, data FROM items WHERE collection = ?');
 const selectOneStmt = db.prepare('SELECT id, data, createdAt FROM items WHERE collection = ? AND id = ?');
@@ -27,20 +26,12 @@ function rowToDoc(row) {
   return { id: row.id, ...JSON.parse(row.data) };
 }
 
-function checkToken(token) {
-  return !APP_TOKEN || token === APP_TOKEN;
-}
-
 const app = express();
-app.use(cors());
 app.use(express.json());
 
-app.use('/api', (req, res, next) => {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!checkToken(token)) return res.status(401).json({ error: 'Unauthorized' });
-  next();
-});
+// /api/session and /api/login must be reachable before signing in.
+auth.registerRoutes(app);
+app.use('/api', auth.requireAuth);
 
 function validCollection(req, res, next) {
   if (!ALLOWED_COLLECTIONS.has(req.params.collection)) {
@@ -122,7 +113,11 @@ if (fs.existsSync(distPath)) {
 }
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: ({ req }) => auth.isSameOrigin(req) && auth.isAuthenticated(req)
+});
 
 function broadcast(message) {
   const payload = JSON.stringify(message);
@@ -131,13 +126,9 @@ function broadcast(message) {
   });
 }
 
-wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'http://localhost');
-  if (!checkToken(url.searchParams.get('token'))) {
-    ws.close(4001, 'Unauthorized');
-  }
-});
-
 server.listen(PORT, () => {
   console.log(`Watch Together server listening on port ${PORT}`);
+  if (!auth.authRequired) {
+    console.warn('APP_PASSWORD is not set: anyone who can reach this server can read and change your lists.');
+  }
 });

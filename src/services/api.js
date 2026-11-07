@@ -1,17 +1,19 @@
 // src/services/api.js
 // Thin client for the self-hosted Express/SQLite server (see /server).
 
-const APP_TOKEN = import.meta.env.VITE_APP_TOKEN || '';
-
-function authHeader() {
-  return APP_TOKEN ? { Authorization: `Bearer ${APP_TOKEN}` } : {};
-}
+// Sign-in uses an HttpOnly session cookie set by POST /api/login, so no secret
+// ever ships in the JS bundle. Any 401 fires 'wt:unauthorized' to show the login screen.
+export const UNAUTHORIZED_EVENT = 'wt:unauthorized';
 
 async function request(path, options = {}) {
   const res = await fetch(`/api${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...authHeader(), ...(options.headers || {}) }
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
   });
+  if (res.status === 401 && !path.startsWith('/login')) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`API request failed (${res.status}): ${body}`);
@@ -22,6 +24,10 @@ async function request(path, options = {}) {
 
 export const api = {
   newId: () => crypto.randomUUID(),
+
+  getSession: () => request('/session'),
+  login: (password) => request('/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  logout: () => request('/logout', { method: 'POST' }),
 
   getCollection: (collection) => request(`/items/${collection}`),
   getDoc: (collection, id) => request(`/items/${collection}/${id}`),
@@ -38,8 +44,7 @@ export const api = {
 
     const connect = () => {
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-      const tokenParam = APP_TOKEN ? `?token=${encodeURIComponent(APP_TOKEN)}` : '';
-      socket = new WebSocket(`${protocol}://${location.host}/ws${tokenParam}`);
+      socket = new WebSocket(`${protocol}://${location.host}/ws`);
 
       socket.onmessage = (event) => {
         const msg = JSON.parse(event.data);

@@ -1,7 +1,7 @@
 // src/services/tmdbService.js
 
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-const APP_TOKEN = import.meta.env.VITE_APP_TOKEN || '';
+import { UNAUTHORIZED_EVENT } from './api';
 
 const SERVICE_MAPPING = {
   8: 'Netflix',
@@ -22,9 +22,8 @@ async function tmdbProxy(path, params = {}) {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
   });
 
-  const res = await fetch(url, {
-    headers: APP_TOKEN ? { Authorization: `Bearer ${APP_TOKEN}` } : {}
-  });
+  const res = await fetch(url, { credentials: 'same-origin' });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (!res.ok) throw new Error(`TMDB proxy error (${res.status})`);
   return res.json();
 }
