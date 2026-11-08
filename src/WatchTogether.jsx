@@ -404,6 +404,34 @@ const WatchTogether = () => {
     await handleLogEpisode(item, next);
   };
 
+  // Unmarks one logged episode (#47), with Undo that restores it and its ratings.
+  // Removing the last episode of an in-progress show removes that In progress entry.
+  const handleUnlogEpisode = async (item, ep) => {
+    const entry = progressEntry(item);
+    if (!entry) return;
+    const { id, ...data } = entry;
+    const before = entry.episodes || [];
+    const after = removeEpisode(before, ep);
+    const dropEntry = !after.length && entry.status === 'In progress';
+    const ok = await attempt(
+      () => (dropEntry ? api.deleteDoc('watched', id) : api.setDoc('watched', id, { episodes: after })),
+      "Couldn't unmark the episode."
+    );
+    if (!ok) return;
+    if (dropEntry && sheet?.id === id) setSheet(null);
+    toast({
+      message: `Unmarked S${ep.season || 1} E${ep.num} of ${entry.title}`,
+      action: {
+        label: 'Undo',
+        onClick: () => attempt(
+          () => (dropEntry ? api.setDoc('watched', id, data) : api.setDoc('watched', id, { episodes: before })),
+          "Couldn't undo."
+        )
+      },
+      duration: 7000
+    });
+  };
+
   // Rating an episode from a To Watch sheet edits the show's Watched entry.
   const handleRateEpisode = (item, episode, value) => {
     const entry = progressEntry(item);
@@ -606,6 +634,7 @@ const WatchTogether = () => {
           onSetRating={handleSetRating}
           onSetEpisodeRating={sheet.mode === 'toWatch' ? handleRateEpisode : handleSetEpisodeRating}
           onLogEpisode={handleLogEpisode}
+          onUnlogEpisode={handleUnlogEpisode}
           onLogNextEpisode={handleLogNextEpisode}
           onDelete={(i) => handleDelete(sheet.mode, i)}
           onPlayTrailer={handlePlayTrailer}
