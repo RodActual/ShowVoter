@@ -130,7 +130,11 @@ export const tmdbService = {
         numberOfEpisodes: data.number_of_episodes,
         lastEpisodeToAir: data.last_episode_to_air
           ? { season: data.last_episode_to_air.season_number, num: data.last_episode_to_air.episode_number }
-          : null
+          : null,
+        nextEpisodeToAir: data.next_episode_to_air
+          ? { season: data.next_episode_to_air.season_number, num: data.next_episode_to_air.episode_number, title: data.next_episode_to_air.name || '', airDate: data.next_episode_to_air.air_date || null }
+          : null,
+        status: data.status || null
       };
     } catch (error) {
       console.error('Error fetching details:', error);

@@ -8,6 +8,7 @@ import TabBar from './components/layout/TabBar';
 import FilterBar from './components/lists/FilterBar';
 import SwipeRow from './components/lists/SwipeRow';
 import TitleRow from './components/lists/TitleRow';
+import ComingSoon from './components/lists/ComingSoon';
 import TonightsPick from './components/lists/TonightsPick';
 import TitleSheet from './components/sheets/TitleSheet';
 import StatsView from './components/views/StatsView';
@@ -21,6 +22,7 @@ import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
 import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
 import { isMovie, lastWatchedEpisode, localDateString, mediaTypeOf, sameTitle } from './titles';
+import useUpcoming from './useUpcoming';
 import { isCaughtUp, mergeEpisode, removeEpisode, resolveNextEpisode } from './progress';
 import { getSeasonFor } from './useNextEpisode';
 import { matchProviders } from './streaming';
@@ -440,6 +442,7 @@ const WatchTogether = () => {
 
   // Tonight's pick: keep the current pick while it's still a candidate, else the best one.
   const { pool: tonightPool, shared: tonightShared } = useMemo(() => pickPool(toWatch), [toWatch]);
+  const upcoming = useUpcoming(toWatch, watched);
   const tonight = tonightPool.find((i) => i.id === tonightId) || tonightPool[0] || null;
 
   const isListed = useCallback((t) => toWatch.some((x) => sameTitle(x, t)) || watched.some((x) => sameTitle(x, t)), [toWatch, watched]);
@@ -549,6 +552,10 @@ const WatchTogether = () => {
                 onWatched={handleMarkWatched}
                 onOpen={(i) => setSheet({ id: i.id, mode: 'toWatch' })}
               />
+            )}
+
+            {isToWatch && !filtering && listStatus === 'ready' && (
+              <ComingSoon items={upcoming} onOpen={(u) => setSheet({ id: u.item.id, mode: u.mode })} />
             )}
 
             {list.length > 0 && (
