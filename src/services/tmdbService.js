@@ -16,7 +16,18 @@ const SERVICE_MAPPING = {
   387: 'Peacock'
 };
 
+// In-memory cache of successful GETs for this session (TMDB data changes slowly). Failures aren't cached.
+const cache = new Map();
+
 async function tmdbProxy(path, params = {}) {
+  const cacheKey = `${path}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString()}`;
+  if (!cache.has(cacheKey)) {
+    cache.set(cacheKey, fetchTmdb(path, params).catch((err) => { cache.delete(cacheKey); throw err; }));
+  }
+  return cache.get(cacheKey);
+}
+
+async function fetchTmdb(path, params) {
   const url = new URL(`/api/tmdb/${path}`, location.origin);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
@@ -28,32 +39,48 @@ async function tmdbProxy(path, params = {}) {
   return res.json();
 }
 
+// TMDB list item -> app title. `fallbackType` covers endpoints whose items lack media_type.
+function toTitle(item, fallbackType) {
+  const mediaType = item.media_type || fallbackType;
+  const isMovieType = mediaType === 'movie';
+  const date = isMovieType ? item.release_date : item.first_air_date;
+  return {
+    id: `${mediaType}-${item.id}`, // TMDB movie and TV ids overlap
+    tmdbId: item.id,
+    title: isMovieType ? item.title : item.name,
+    type: isMovieType ? 'Movie' : 'TV Show',
+    releaseDate: date,
+    year: date?.split('-')[0],
+    overview: item.overview,
+    posterPath: item.poster_path ? `${TMDB_IMAGE_BASE_URL}${item.poster_path}` : null,
+    backdropPath: item.backdrop_path ? `${TMDB_IMAGE_BASE_URL}${item.backdrop_path}` : null,
+    rating: item.vote_average ? item.vote_average.toFixed(1) : null,
+    mediaType
+  };
+}
+
+const isTitle = (mediaType) => mediaType === 'movie' || mediaType === 'tv';
+
 export const tmdbService = {
   // Throws on failure so the caller can tell "no matches" from "search failed".
   async search(query) {
     if (!query.trim()) return [];
-
     const data = await tmdbProxy('search/multi', { query, include_adult: false });
+    return (data.results || []).filter((item) => isTitle(item.media_type)).slice(0, 10).map((item) => toTitle(item));
+  },
 
-    return (data.results || [])
-        .filter(item => item.media_type === 'movie' || item.media_type === 'tv')
-        .slice(0, 10)
-        .map(item => ({
-          id: `${item.media_type}-${item.id}`, // TMDB movie and TV ids overlap
-          tmdbId: item.id,
-          title: item.media_type === 'movie' ? item.title : item.name,
-          type: item.media_type === 'movie' ? 'Movie' : 'TV Show',
-          // Feature 10 Requirement: Store full date for countdowns
-          releaseDate: item.media_type === 'movie' ? item.release_date : item.first_air_date,
-          year: item.media_type === 'movie'
-            ? item.release_date?.split('-')[0]
-            : item.first_air_date?.split('-')[0],
-          overview: item.overview,
-          posterPath: item.poster_path ? `${TMDB_IMAGE_BASE_URL}${item.poster_path}` : null,
-          backdropPath: item.backdrop_path ? `${TMDB_IMAGE_BASE_URL}${item.backdrop_path}` : null,
-          rating: item.vote_average ? item.vote_average.toFixed(1) : null,
-          mediaType: item.media_type
-        }));
+  // Match mode feeds. Both throw on failure.
+  async trending(page = 1) {
+    const data = await tmdbProxy('trending/all/week', { page });
+    return (data.results || []).filter((item) => isTitle(item.media_type) && item.poster_path).map((item) => toTitle(item));
+  },
+
+  // "More like this": TMDB recommendations, falling back to similar titles when there are none.
+  async recommendations(tmdbId, mediaType) {
+    const data = await tmdbProxy(`${mediaType}/${tmdbId}/recommendations`);
+    let results = data.results || [];
+    if (results.length === 0) results = (await tmdbProxy(`${mediaType}/${tmdbId}/similar`)).results || [];
+    return results.filter((item) => item.poster_path).map((item) => toTitle(item, mediaType));
   },
 
   async getStreamingProviders(tmdbId, mediaType) {

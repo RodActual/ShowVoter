@@ -1,8 +1,9 @@
 // src/services/api.js
 // Data access on Firestore: couples/{COUPLE_ID}/{collection}/{id}. Same shape the app used before.
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, deleteDoc, doc, getDocs, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
 import { auth, db, COUPLE_ID, LOGIN_EMAIL } from './firebase';
+import { applyVote, voteKey } from '../match';
 
 const colRef = (name) => collection(db, 'couples', COUPLE_ID, name);
 const docRef = (name, id) => doc(db, 'couples', COUPLE_ID, name, id);
@@ -25,6 +26,41 @@ export const api = {
     return setDoc(docRef(name, id), fields, { merge: true });
   },
   deleteDoc: (name, id) => deleteDoc(docRef(name, id)),
+
+  // Match mode: records my vote; if it completes a match, adds the title to To Watch in the same
+  // transaction (fixed id, so two simultaneous Yes votes still create one entry). Resolves to true on a match.
+  castVote(title, me, value) {
+    const key = voteKey(title);
+    const info = {
+      title: title.title,
+      type: title.type,
+      mediaType: title.mediaType,
+      tmdbId: title.tmdbId,
+      posterPath: title.posterPath || null,
+      overview: title.overview || '',
+      year: title.year || null,
+      rating: title.rating || null,
+      releaseDate: title.releaseDate || null
+    };
+    return runTransaction(db, async (tx) => {
+      const ref = docRef('votes', key);
+      const snap = await tx.get(ref);
+      const { update, match } = applyVote(snap.exists() ? snap.data() : null, me, value);
+      tx.set(ref, { ...info, ...update }, { merge: true });
+      if (match) {
+        tx.set(docRef('toWatch', `match-${key}`), {
+          ...info,
+          service: 'Other',
+          anthonyPriority: 2,
+          pamPriority: 2,
+          addedBy: 'match',
+          addedDate: new Date().toISOString().split('T')[0],
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+      }
+      return match;
+    });
+  },
 
   // Live list. onItems gets the full array on every change (Firestore handles reconnects and offline).
   watchCollection(name, { onItems, onError }) {

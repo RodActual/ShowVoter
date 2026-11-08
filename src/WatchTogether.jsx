@@ -1,5 +1,5 @@
 // src/WatchTogether.jsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, RefreshCw, Settings } from 'lucide-react';
 import api from './services/api';
 import tmdbService from './services/tmdbService';
@@ -11,13 +11,15 @@ import TitleRow from './components/lists/TitleRow';
 import TonightsPick from './components/lists/TonightsPick';
 import TitleSheet from './components/sheets/TitleSheet';
 import StatsView from './components/views/StatsView';
+import MatchView from './components/views/MatchView';
 import AddModal from './components/modals/AddModal';
 import RatingModal from './components/modals/RatingModal';
 import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import SettingsModal from './components/modals/SettingsModal';
+import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
-import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userColor, userName } from './users';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
 import { isMovie, lastWatchedEpisode, mediaTypeOf, sameTitle } from './titles';
 import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists';
 
@@ -78,9 +80,31 @@ const WatchTogether = () => {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [itemToRate, setItemToRate] = useState(null);
   const [trailer, setTrailer] = useState(null);
+  const [preview, setPreview] = useState(null); // { title, because } for a title not on your lists
 
   const { items: toWatch, status: toWatchStatus } = useLiveCollection('toWatch', Boolean(currentUser));
   const { items: watched, status: watchedStatus } = useLiveCollection('watched', Boolean(currentUser));
+  const { items: votes, status: votesStatus } = useLiveCollection('votes', Boolean(currentUser));
+
+  // "It's a match" toast on both phones: announce matches that appear after the first snapshot.
+  const seenMatches = useRef(null);
+  useEffect(() => {
+    if (votesStatus !== 'ready') return;
+    const matched = votes.filter((v) => v.matchedAt);
+    if (seenMatches.current === null) {
+      seenMatches.current = new Set(matched.map((v) => v.id)); // existing matches are old news
+      return;
+    }
+    matched.filter((v) => !seenMatches.current.has(v.id)).forEach((v) => {
+      seenMatches.current.add(v.id);
+      toast({
+        message: `It's a match! ${v.title} is on To Watch.`,
+        tone: 'success',
+        action: { label: 'View', onClick: () => { setActiveTab('toWatch'); setSheet({ id: `match-${v.id}`, mode: 'toWatch' }); } },
+        duration: 8000
+      });
+    });
+  }, [votes, votesStatus, toast]);
 
   const closeModal = () => setModal(null);
 
@@ -283,6 +307,27 @@ const WatchTogether = () => {
     });
   };
 
+  // Match mode vote. Returns true on a match, false otherwise, null on failure.
+  const handleVote = async (card, value) => {
+    try {
+      const matched = await api.castVote(card, currentUser, value);
+      if (matched) {
+        // Fill in where to stream it (best effort; the match is already saved).
+        tmdbService.getStreamingProviders(card.tmdbId, card.mediaType).then((providers) => {
+          if (providers[0]) api.setDoc('toWatch', `match-${card.key}`, { service: providers[0].name }).catch(() => {});
+        });
+      }
+      return matched;
+    } catch (err) {
+      console.error(err);
+      toast({ message: navigator.onLine ? "Couldn't save your vote." : 'Voting needs a connection.', tone: 'error' });
+      return null;
+    }
+  };
+
+  const handleUndoVote = (key) =>
+    attempt(() => api.setDoc('votes', key, { [currentUser]: null }), "Couldn't undo the vote.");
+
   const handleSetPriority = (item, value) =>
     attempt(() => api.setDoc('toWatch', item.id, { [priorityField(currentUser)]: value }), "Couldn't save your priority.");
 
@@ -300,6 +345,13 @@ const WatchTogether = () => {
   // Tonight's pick: keep the current pick while it's still a candidate, else the best one.
   const { pool: tonightPool, shared: tonightShared } = useMemo(() => pickPool(toWatch), [toWatch]);
   const tonight = tonightPool.find((i) => i.id === tonightId) || tonightPool[0] || null;
+
+  const isListed = useCallback((t) => toWatch.some((x) => sameTitle(x, t)) || watched.some((x) => sameTitle(x, t)), [toWatch, watched]);
+  const openPreview = useCallback((title, because) => setPreview({ title, because }), []);
+  const handleAddFromPreview = async (title, service) => {
+    await handleAddItem(title, service);
+    setPreview(null);
+  };
 
   const watchedFor = useCallback((item) => watched.find((w) => sameTitle(w, item))?.episodes, [watched]);
 
@@ -340,7 +392,7 @@ const WatchTogether = () => {
       <header className="sticky top-0 z-30 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-safe pt-[env(safe-area-inset-top)]">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 min-h-14">
           <h1 className="text-lg font-bold text-white">
-            {activeTab === 'toWatch' ? 'To Watch' : activeTab === 'watched' ? 'Watched' : 'Stats'}
+            {{ toWatch: 'To Watch', watched: 'Watched', match: 'Match', stats: 'Stats' }[activeTab]}
             {isList && <span className="ml-2 text-sm font-normal text-gray-300">{list.length}</span>}
           </h1>
           <div className="flex items-center gap-1">
@@ -362,7 +414,9 @@ const WatchTogether = () => {
               aria-label={`Signed in as ${userName(appSettings, currentUser)}. Switch profile`}
               className="min-h-11 px-3 rounded-full bg-gray-800 border border-gray-700 text-sm text-white flex items-center gap-2"
             >
-              <span aria-hidden="true" className="w-3 h-3 rounded-full" style={{ backgroundColor: userColor(appSettings, currentUser) }} />
+              <span aria-hidden="true" className="w-6 h-6 -ml-1 rounded-full bg-blue-600 text-xs font-bold flex items-center justify-center">
+                {userName(appSettings, currentUser).slice(0, 1).toUpperCase()}
+              </span>
               {userName(appSettings, currentUser)}
             </button>
             <button type="button" onClick={() => setModal('settings')} aria-label="Settings" className={iconButton}>
@@ -372,9 +426,21 @@ const WatchTogether = () => {
         </div>
       </header>
 
-      <main className="px-safe pt-3 pb-44 max-w-5xl mx-auto">
+      <main className={`px-safe pt-3 max-w-5xl mx-auto ${isToWatch ? 'pb-44' : 'pb-24'}`}>
         {activeTab === 'stats' ? (
           <StatsView watched={watched} toWatchCount={toWatch.length} settings={appSettings} />
+        ) : activeTab === 'match' ? (
+          <MatchView
+            currentUser={currentUser}
+            settings={appSettings}
+            votes={votes}
+            toWatch={toWatch}
+            watched={watched}
+            onVote={handleVote}
+            onUndo={handleUndoVote}
+            onTrailer={handlePlayTrailer}
+            onPreview={openPreview}
+          />
         ) : (
           <>
             {isToWatch && !filtering && listStatus === 'ready' && (
@@ -471,6 +537,18 @@ const WatchTogether = () => {
           onSetEpisodeRating={handleSetEpisodeRating}
           onDelete={(i) => handleDelete(sheet.mode, i)}
           onPlayTrailer={handlePlayTrailer}
+          isListed={isListed}
+          onPreview={(t) => openPreview(t)}
+        />
+      )}
+      {preview && (
+        <TitlePreview
+          title={preview.title}
+          because={preview.because}
+          listed={isListed(preview.title)}
+          onClose={() => setPreview(null)}
+          onAdd={handleAddFromPreview}
+          onTrailer={handlePlayTrailer}
         />
       )}
       {modal === 'add' && <AddModal onClose={closeModal} onAdd={handleAddItem} />}

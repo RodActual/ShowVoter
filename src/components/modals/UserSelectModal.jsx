@@ -1,6 +1,6 @@
 import React from 'react';
 import { User } from 'lucide-react';
-import { userColor, userName } from '../../users';
+import { userName } from '../../users';
 
 const UserSelectModal = ({ onSelectUser, settings }) => (
   <main className="min-h-[100dvh] bg-gray-900 flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))]">
@@ -14,8 +14,7 @@ const UserSelectModal = ({ onSelectUser, settings }) => (
             key={key}
             type="button"
             onClick={() => onSelectUser(key)}
-            style={{ backgroundColor: userColor(settings, key) }}
-            className="w-full text-white min-h-14 px-6 rounded-lg hover:opacity-90 font-semibold text-lg [text-shadow:0_1px_2px_rgb(0_0_0/60%)]"
+            className="w-full text-white min-h-14 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold text-lg"
           >
             {userName(settings, key)}
           </button>

@@ -4,7 +4,9 @@ import Modal from '../common/Modal';
 import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import tmdbService from '../../services/tmdbService';
-import { averageRating, priorityField, ratingField, resolveUserKey, userColor, userName } from '../../users';
+import EpisodeBrowser from './EpisodeBrowser';
+import MoreLikeThis from './MoreLikeThis';
+import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
 import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
@@ -49,7 +51,9 @@ const TitleSheet = ({
   onSetRating,
   onSetEpisodeRating,
   onDelete,
-  onPlayTrailer
+  onPlayTrailer,
+  isListed,
+  onPreview
 }) => {
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
@@ -136,14 +140,13 @@ const TitleSheet = ({
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-100">Your rating: <strong className="text-white">{myRating ? `${myRating}/10` : 'not rated'}</strong></span>
               <span className="text-gray-200 flex items-center gap-1">
-                <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ backgroundColor: userColor(settings, partner) }} />
                 {userName(settings, partner)}: {partnerRating ? `${partnerRating}/10` : 'not rated'}
               </span>
             </div>
             <RatingPicker label={`Your rating for ${item.title}`} value={myRating} onChange={(v) => onSetRating(item, v)} />
           </Section>
 
-          {(item.episodes || []).length > 0 && (
+          {!item.tmdbId && (item.episodes || []).length > 0 && (
             <Section title={`Episodes (${item.episodes.length})`}>
               <div className="space-y-4">
                 {Object.keys(episodesBySeason).map((s) => (
@@ -172,6 +175,25 @@ const TitleSheet = ({
             </Section>
           )}
         </>
+      )}
+
+      {!isMovie(item) && item.tmdbId && (
+        <Section title="Episodes">
+          <EpisodeBrowser
+            item={item}
+            loggedEpisodes={episodes || []}
+            myRatingField={ratingField(currentUser)}
+            partnerRatingField={ratingField(partner)}
+            partnerName={userName(settings, partner)}
+            onRateEpisode={mode === 'watched' && !isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
+          />
+        </Section>
+      )}
+
+      {item.tmdbId && (
+        <Section title="More like this">
+          <MoreLikeThis item={item} isListed={isListed} onPreview={onPreview} />
+        </Section>
       )}
 
       <button
