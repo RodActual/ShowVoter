@@ -61,3 +61,14 @@ test('titles without a TMDB id never match each other', async () => {
   assert.strictEqual(sameTitle({ tmdbId: 1, mediaType: 'tv' }, { tmdbId: 1, mediaType: 'movie' }), false);
 });
 
+
+test('vetoed titles never become Tonight\'s pick; notes are searchable', () => {
+  const list = [
+    { id: 'a', title: 'A', anthonyPriority: 3, pamPriority: 3, pamVeto: true },
+    { id: 'b', title: 'B', anthonyPriority: 2, pamPriority: 2 },
+    { id: 'c', title: 'C', anthonyPriority: 1, pamPriority: 1, notes: 'Sarah recommended this' }
+  ];
+  assert.deepStrictEqual(pickPool(list).pool.map((i) => i.id), ['b']);
+  assert.deepStrictEqual(pickPool([list[0]]).pool, []);
+  assert.deepStrictEqual(filterItems(list, { query: 'sarah' }).map((i) => i.id), ['c']);
+});

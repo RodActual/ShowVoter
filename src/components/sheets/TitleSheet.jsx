@@ -1,5 +1,5 @@
-import React from 'react';
-import { Ban, Check, ExternalLink, Play, Star, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Ban, Check, ExternalLink, Play, Star, ThumbsDown, Trash2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
@@ -7,7 +7,7 @@ import EpisodeBrowser from './EpisodeBrowser';
 import MoreLikeThis from './MoreLikeThis';
 import WhereToWatch from './WhereToWatch';
 import useNextEpisode from '../../useNextEpisode';
-import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
+import { averageRating, priorityField, ratingField, resolveUserKey, userName, vetoField } from '../../users';
 import { daysUntil, isMovie } from '../../titles';
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
@@ -18,6 +18,30 @@ const Section = ({ title, children }) => (
     {children}
   </section>
 );
+
+export const NOTES_MAX = 500;
+
+// Shared note on a title (#53). Saved when the field loses focus, only if it changed.
+const NotesField = ({ item, onSave }) => {
+  const [text, setText] = useState(item.notes || '');
+  useEffect(() => { setText(item.notes || ''); }, [item.id, item.notes]);
+  return (
+    <>
+      <label htmlFor={`notes-${item.id}`} className="sr-only">Notes on {item.title}</label>
+      <textarea
+        id={`notes-${item.id}`}
+        value={text}
+        maxLength={NOTES_MAX}
+        rows={3}
+        placeholder="e.g. Sarah recommended this"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => { if (text.trim() !== (item.notes || '')) onSave(text.trim()); }}
+        className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-base text-white placeholder-gray-300 focus:outline-none focus:border-blue-400"
+      />
+      <p className="text-xs text-gray-200 text-right">{text.length}/{NOTES_MAX}</p>
+    </>
+  );
+};
 
 const TitleSheet = ({
   item,
@@ -37,7 +61,9 @@ const TitleSheet = ({
   onPlayTrailer,
   isListed,
   onPreview,
-  onUpdateService
+  onUpdateService,
+  onSetVeto,
+  onSetNotes
 }) => {
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
@@ -109,7 +135,20 @@ const TitleSheet = ({
             />
             <p className="text-sm text-gray-200 mt-2">
               {userName(settings, partner)}: <PriorityText value={item[priorityField(partner)] || 0} />
+              {item[vetoField(partner)] && <span className="text-red-200"> · not for them</span>}
             </p>
+            {onSetVeto && (
+              <button
+                type="button"
+                aria-pressed={Boolean(item[vetoField(currentUser)])}
+                onClick={() => onSetVeto(item, !item[vetoField(currentUser)])}
+                className={`mt-3 min-h-11 px-3 rounded-lg text-sm font-semibold inline-flex items-center gap-2 border ${item[vetoField(currentUser)]
+                  ? 'bg-red-800 border-red-600 text-white'
+                  : 'border-gray-500 text-gray-100 hover:bg-gray-700'}`}
+              >
+                <ThumbsDown size={16} aria-hidden="true" /> {item[vetoField(currentUser)] ? 'Not for me (tap to undo)' : 'Not for me'}
+              </button>
+            )}
           </Section>
           {!isMovie(item) && item.tmdbId && upNext && upNext !== 'done' && (
             <button
@@ -173,6 +212,12 @@ const TitleSheet = ({
             </Section>
           )}
         </>
+      )}
+
+      {onSetNotes && (
+        <Section title="Notes">
+          <NotesField item={item} onSave={(text) => onSetNotes(item, text)} />
+        </Section>
       )}
 
       {!isMovie(item) && item.tmdbId && (

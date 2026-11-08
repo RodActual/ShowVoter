@@ -20,7 +20,7 @@ import TrailerModal from './components/modals/TrailerModal';
 import SettingsModal from './components/modals/SettingsModal';
 import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
-import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName, vetoField } from './users';
 import { isMovie, lastWatchedEpisode, localDateString, mediaTypeOf, sameTitle } from './titles';
 import useUpcoming from './useUpcoming';
 import { isCaughtUp, mergeEpisode, removeEpisode, resolveNextEpisode } from './progress';
@@ -337,6 +337,12 @@ const WatchTogether = () => {
   const handleSetPriority = (item, value) =>
     attempt(() => api.setDoc('toWatch', item.id, { [priorityField(currentUser)]: value }), "Couldn't save your priority.");
 
+  const handleSetVeto = (item, value) =>
+    attempt(() => api.setDoc('toWatch', item.id, { [vetoField(currentUser)]: value }), "Couldn't save that.");
+
+  const handleSetNotes = (collection, item, notes) =>
+    attempt(() => api.setDoc(collection, item.id, { notes: notes.slice(0, 500) }), "Couldn't save the note.");
+
   const handleSetRating = (item, value) =>
     attempt(() => api.setDoc('watched', item.id, { [ratingField(currentUser)]: value }), "Couldn't save your rating.");
 
@@ -642,6 +648,8 @@ const WatchTogether = () => {
           onSetEpisodeRating={sheet.mode === 'toWatch' ? handleRateEpisode : handleSetEpisodeRating}
           onLogEpisode={handleLogEpisode}
           onUnlogEpisode={handleUnlogEpisode}
+          onSetVeto={sheet.mode === 'toWatch' ? handleSetVeto : undefined}
+          onSetNotes={(i, text) => handleSetNotes(sheet.mode, i, text)}
           onLogNextEpisode={handleLogNextEpisode}
           onDelete={(i) => handleDelete(sheet.mode, i)}
           onPlayTrailer={handlePlayTrailer}
