@@ -30,7 +30,7 @@ Architecture
 Setup (one time)
 1. Firebase console → your project → Authentication → Sign-in method: enable **Email/Password**, disable **Anonymous**.
 2. Authentication → Users → Add user: the shared account's email and a long password. Both of you use this password to sign in.
-3. Firestore Database → Rules: paste `firestore.rules`, replace `REPLACE_WITH_LOGIN_EMAIL` with that email, Publish.
+3. Firestore Database → Rules: paste `firestore.rules` (its email must match `VITE_LOGIN_EMAIL`, lowercase), Publish.
 4. Vercel → project → Settings → Environment Variables (all environments):
    * `VITE_FIREBASE_*` — already set.
    * `VITE_LOGIN_EMAIL` — the shared account's email.
