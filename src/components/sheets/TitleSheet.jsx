@@ -4,6 +4,7 @@ import Modal from '../common/Modal';
 import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import tmdbService from '../../services/tmdbService';
+import EpisodeBrowser from './EpisodeBrowser';
 import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
 import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
 
@@ -142,7 +143,7 @@ const TitleSheet = ({
             <RatingPicker label={`Your rating for ${item.title}`} value={myRating} onChange={(v) => onSetRating(item, v)} />
           </Section>
 
-          {(item.episodes || []).length > 0 && (
+          {!item.tmdbId && (item.episodes || []).length > 0 && (
             <Section title={`Episodes (${item.episodes.length})`}>
               <div className="space-y-4">
                 {Object.keys(episodesBySeason).map((s) => (
@@ -171,6 +172,19 @@ const TitleSheet = ({
             </Section>
           )}
         </>
+      )}
+
+      {!isMovie(item) && item.tmdbId && (
+        <Section title="Episodes">
+          <EpisodeBrowser
+            item={item}
+            loggedEpisodes={episodes || []}
+            myRatingField={ratingField(currentUser)}
+            partnerRatingField={ratingField(partner)}
+            partnerName={userName(settings, partner)}
+            onRateEpisode={mode === 'watched' && !isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
+          />
+        </Section>
       )}
 
       <button

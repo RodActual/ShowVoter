@@ -16,7 +16,18 @@ const SERVICE_MAPPING = {
   387: 'Peacock'
 };
 
+// In-memory cache of successful GETs for this session (TMDB data changes slowly). Failures aren't cached.
+const cache = new Map();
+
 async function tmdbProxy(path, params = {}) {
+  const cacheKey = `${path}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString()}`;
+  if (!cache.has(cacheKey)) {
+    cache.set(cacheKey, fetchTmdb(path, params).catch((err) => { cache.delete(cacheKey); throw err; }));
+  }
+  return cache.get(cacheKey);
+}
+
+async function fetchTmdb(path, params) {
   const url = new URL(`/api/tmdb/${path}`, location.origin);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
@@ -64,9 +75,12 @@ export const tmdbService = {
     return (data.results || []).filter((item) => isTitle(item.media_type) && item.poster_path).map((item) => toTitle(item));
   },
 
+  // "More like this": TMDB recommendations, falling back to similar titles when there are none.
   async recommendations(tmdbId, mediaType) {
     const data = await tmdbProxy(`${mediaType}/${tmdbId}/recommendations`);
-    return (data.results || []).filter((item) => item.poster_path).map((item) => toTitle(item, mediaType));
+    let results = data.results || [];
+    if (results.length === 0) results = (await tmdbProxy(`${mediaType}/${tmdbId}/similar`)).results || [];
+    return results.filter((item) => item.poster_path).map((item) => toTitle(item, mediaType));
   },
 
   async getStreamingProviders(tmdbId, mediaType) {
