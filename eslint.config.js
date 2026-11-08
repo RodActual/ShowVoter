@@ -4,7 +4,7 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
-  { ignores: ['build/**', 'server/node_modules/**'] },
+  { ignores: ['build/**', '.vercel/**'] },
   js.configs.recommended,
   {
     files: ['src/**/*.{js,jsx}'],
@@ -24,8 +24,8 @@ export default [
     }
   },
   {
-    files: ['server/**/*.js'],
-    languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: globals.node },
+    files: ['api/**/*.js', 'lib/**/*.js'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: globals.node },
     rules: { 'no-unused-vars': ['error', { varsIgnorePattern: '^_', ignoreRestSiblings: true }] }
   }
 ];

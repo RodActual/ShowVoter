@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// Only the shared app account (email/password sign-in) can read or write.
+// Replace the email below with the VITE_LOGIN_EMAIL you set in Vercel, then publish:
+//   Firebase console → Firestore Database → Rules, or `npx firebase-tools deploy --only firestore:rules`.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isApp() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.email == 'REPLACE_WITH_LOGIN_EMAIL';
+    }
+
+    match /couples/{coupleId}/{collection}/{docId} {
+      allow read, write: if isApp() && collection in ['toWatch', 'watched', 'settings'];
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
