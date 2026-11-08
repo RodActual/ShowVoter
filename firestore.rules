@@ -12,7 +12,7 @@ service cloud.firestore {
     }
 
     match /couples/{coupleId}/{collection}/{docId} {
-      allow read, write: if isApp() && collection in ['toWatch', 'watched', 'settings'];
+      allow read, write: if isApp() && collection in ['toWatch', 'watched', 'settings', 'votes'];
     }
 
     match /{document=**} {

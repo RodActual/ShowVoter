@@ -1,8 +1,9 @@
 import React from 'react';
-import { ListTodo, CheckCircle2, BarChart2 } from 'lucide-react';
+import { ListTodo, CheckCircle2, Heart, BarChart2 } from 'lucide-react';
 
 const TABS = [
   { key: 'toWatch', label: 'To Watch', Icon: ListTodo },
+  { key: 'match', label: 'Match', Icon: Heart },
   { key: 'watched', label: 'Watched', Icon: CheckCircle2 },
   { key: 'stats', label: 'Stats', Icon: BarChart2 }
 ];
@@ -13,7 +14,7 @@ const TabBar = ({ active, counts, onChange }) => (
     aria-label="Main"
     className="fixed bottom-0 inset-x-0 z-40 bg-gray-900/95 backdrop-blur border-t border-gray-700 pb-[env(safe-area-inset-bottom)] px-safe"
   >
-    <ul className="max-w-xl mx-auto grid grid-cols-3">
+    <ul className="max-w-xl mx-auto grid grid-cols-4">
       {TABS.map(({ key, label, Icon }) => {
         const selected = active === key;
         return (

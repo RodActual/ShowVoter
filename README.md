@@ -5,6 +5,7 @@ Features
 To Watch
  * Shared Backlog: Add movies and TV shows from TMDB to a common list.
  * Compact List: One row per title with both people's priority; tap a row for details, trailer and actions.
+ * Match Mode: Each of you swipes yes or no on suggestions (trending and "more like" titles you both loved); titles you both say yes to land on To Watch, with a toast on both phones.
  * Tonight's Pick: Suggests a title you both rated Med or High, with Another and Watched buttons.
  * Search & Filters: Search, Movie/TV and streaming-service chips, and sorting on both lists.
  * Swipe Actions: Swipe left to delete (with Undo), right to mark watched.
@@ -18,10 +19,10 @@ Everywhere
 
 Architecture
  * Hosting: Vercel builds and serves the Vite frontend from `main` (production) and every branch (previews).
- * Data: Firestore at `couples/{VITE_COUPLE_ID}/{toWatch|watched|settings}`, with live updates and an offline cache (`src/services/api.js`).
+ * Data: Firestore at `couples/{VITE_COUPLE_ID}/{toWatch|watched|settings|votes}`, with live updates and an offline cache (`src/services/api.js`).
  * Sign-in: one shared Firebase Auth account (Email/Password). The app shows a password screen; Firestore rules (`firestore.rules`) only allow that account.
  * TMDB: the Vercel function `api/tmdb.js` holds `TMDB_API_KEY` and only answers requests with that account's Firebase ID token (`lib/tmdbProxy.js`).
- * Users: two fixed ids (`user1`, `user2`). Names and colors are set in Settings and shared by both phones; "Who's watching?" picks your profile on each device.
+ * Users: two fixed ids (`user1`, `user2`). Names are set in Settings and shared by both phones; "Who's watching?" picks your profile on each device.
 
 Setup (one time)
 1. Firebase console → your project → Authentication → Sign-in method: enable **Email/Password**, disable **Anonymous**.
