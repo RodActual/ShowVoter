@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Circle } from 'lucide-react';
 import tmdbService from '../../services/tmdbService';
 import { RatingSelect } from '../common/RatingPicker';
 import { lastWatchedEpisode, localDateString, parseLocalDate } from '../../titles';
@@ -35,7 +35,7 @@ const EpisodeRow = ({ ep, logged, today, ratingProps, onLog, onUnlog }) => {
                 aria-pressed="true"
                 onClick={() => onUnlog(logged)}
                 aria-label={`Episode ${ep.num}, ${ep.title}, is watched. Tap to unmark`}
-                className="min-h-11 px-3 rounded-lg border border-green-400 text-green-200 hover:bg-gray-600 text-sm font-semibold inline-flex items-center gap-1"
+                className="min-h-11 px-3 rounded-lg bg-green-700 hover:bg-green-800 text-white text-sm font-semibold inline-flex items-center gap-1"
               >
                 <CheckCircle2 size={16} aria-hidden="true" /> Watched
               </button>
@@ -47,9 +47,9 @@ const EpisodeRow = ({ ep, logged, today, ratingProps, onLog, onUnlog }) => {
             type="button"
             onClick={() => onLog(ep)}
             aria-label={`Mark episode ${ep.num}, ${ep.title}, as watched`}
-            className="shrink-0 min-h-11 px-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold inline-flex items-center gap-1"
+            className="shrink-0 min-h-11 px-3 rounded-lg border border-gray-500 text-gray-100 hover:bg-gray-700 text-sm font-semibold inline-flex items-center gap-1"
           >
-            <Check size={16} aria-hidden="true" /> Watched
+            <Circle size={16} aria-hidden="true" /> Mark watched
           </button>
         )}
       </div>
