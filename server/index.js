@@ -23,11 +23,35 @@ const upsertStmt = db.prepare(`
 const deleteStmt = db.prepare('DELETE FROM items WHERE collection = ? AND id = ?');
 
 function rowToDoc(row) {
-  return { id: row.id, ...JSON.parse(row.data) };
+  // id last so a stray "id" inside the stored data can never override the row id.
+  return { ...JSON.parse(row.data), id: row.id };
 }
 
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+// Images come from TMDB, trailers from YouTube; everything else is same-origin.
+const CSP = [
+  "default-src 'self'",
+  "img-src 'self' data: https://image.tmdb.org",
+  "frame-src https://www.youtube.com",
+  "connect-src 'self' ws: wss:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+
 const app = express();
-app.use(express.json());
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
+app.use(express.json({ limit: '256kb' }));
 
 // /api/session and /api/login must be reachable before signing in.
 auth.registerRoutes(app);
@@ -53,10 +77,14 @@ app.get('/api/items/:collection/:id', validCollection, (req, res) => {
 // Upsert with merge semantics, mirroring Firestore's setDoc(..., { merge: true }).
 app.put('/api/items/:collection/:id', validCollection, (req, res) => {
   const { collection, id } = req.params;
+  if (!isPlainObject(req.body)) return res.status(400).json({ error: 'Body must be a JSON object' });
+  if (id.length > 100) return res.status(400).json({ error: 'id too long' });
+  const { id: _ignored, ...body } = req.body;
+
   const existingRow = selectOneStmt.get(collection, id);
   const now = new Date().toISOString();
   const existingData = existingRow ? JSON.parse(existingRow.data) : null;
-  const merged = { ...existingData, ...req.body };
+  const merged = { ...existingData, ...body };
 
   upsertStmt.run({
     collection,
@@ -66,7 +94,7 @@ app.put('/api/items/:collection/:id', validCollection, (req, res) => {
     updatedAt: now
   });
 
-  const doc = { id, ...merged };
+  const doc = { ...merged, id };
   broadcast({ collection, type: 'put', id, data: doc });
   res.json(doc);
 });
@@ -80,10 +108,13 @@ app.delete('/api/items/:collection/:id', validCollection, (req, res) => {
 
 // TMDB proxy: keeps the TMDB API key server-side only.
 app.get('/api/tmdb/*', async (req, res) => {
+  const tmdbPath = req.params[0];
+  if (!/^[a-z0-9_/-]+$/i.test(tmdbPath) || tmdbPath.includes('..')) {
+    return res.status(400).json({ error: 'Bad TMDB path' });
+  }
   if (!TMDB_API_KEY) {
     return res.status(500).json({ error: 'TMDB_API_KEY is not configured on the server' });
   }
-  const tmdbPath = req.params[0];
   try {
     const url = new URL(`https://api.themoviedb.org/3/${tmdbPath}`);
     for (const [key, value] of Object.entries(req.query)) {
@@ -118,6 +149,20 @@ const wss = new WebSocketServer({
   path: '/ws',
   verifyClient: ({ req }) => auth.isSameOrigin(req) && auth.isAuthenticated(req)
 });
+
+// Drop connections that stop answering pings (sleeping phones, dropped Wi-Fi).
+wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+});
+const heartbeat = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (!ws.isAlive) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+wss.on('close', () => clearInterval(heartbeat));
 
 function broadcast(message) {
   const payload = JSON.stringify(message);
