@@ -12,8 +12,6 @@ const SERVICE_MAPPING = {
   350: 'Apple TV+',
   531: 'Paramount+',
   387: 'Peacock',
-  Apple: 'Apple TV+',
-  HBO: 'Max'
 };
 
 async function tmdbProxy(path, params = {}) {
@@ -29,17 +27,17 @@ async function tmdbProxy(path, params = {}) {
 }
 
 export const tmdbService = {
+  // Throws on failure so the caller can tell "no matches" from "search failed".
   async search(query) {
     if (!query.trim()) return [];
 
-    try {
-      const data = await tmdbProxy('search/multi', { query, include_adult: false });
+    const data = await tmdbProxy('search/multi', { query, include_adult: false });
 
-      return data.results
+    return (data.results || [])
         .filter(item => item.media_type === 'movie' || item.media_type === 'tv')
         .slice(0, 10)
         .map(item => ({
-          id: item.id,
+          id: `${item.media_type}-${item.id}`, // TMDB movie and TV ids overlap
           tmdbId: item.id,
           title: item.media_type === 'movie' ? item.title : item.name,
           type: item.media_type === 'movie' ? 'Movie' : 'TV Show',
@@ -54,10 +52,6 @@ export const tmdbService = {
           rating: item.vote_average ? item.vote_average.toFixed(1) : null,
           mediaType: item.media_type
         }));
-    } catch (error) {
-      console.error('TMDB search error:', error);
-      return [];
-    }
   },
 
   async getStreamingProviders(tmdbId, mediaType) {
@@ -102,7 +96,10 @@ export const tmdbService = {
         runtime: data.runtime || (data.episode_run_time ? data.episode_run_time[0] : null),
         genres: data.genres?.map(g => g.name).join(', '),
         numberOfSeasons: data.number_of_seasons,
-        numberOfEpisodes: data.number_of_episodes
+        numberOfEpisodes: data.number_of_episodes,
+        lastEpisodeToAir: data.last_episode_to_air
+          ? { season: data.last_episode_to_air.season_number, num: data.last_episode_to_air.episode_number }
+          : null
       };
     } catch (error) {
       console.error('Error fetching details:', error);

@@ -1,234 +1,155 @@
-import React, { useState, useEffect } from 'react';
-import { Trash2, Edit2, ChevronUp, ChevronDown, Ban } from 'lucide-react';
-import StarRating from '../common/StarRating';
+import React, { useState } from 'react';
+import { Trash2, ChevronUp, ChevronDown, Ban } from 'lucide-react';
+import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import { averageRating, ratingField, userColor, userName } from '../../users';
 
-const WatchedCard = ({ 
-  item, 
+const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
+
+const RatingRow = ({ settings, userKey, value, children }) => (
+  <div className="flex items-center justify-between gap-3 min-h-11">
+    <div className="flex items-center gap-2 min-w-0">
+      <span aria-hidden="true" className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: userColor(settings, userKey) }} />
+      <span className="text-sm font-semibold text-gray-100 truncate">{userName(settings, userKey)}</span>
+    </div>
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-gray-200 tabular-nums">{value ? `${value}/10` : 'Not rated'}</span>
+      {children}
+    </div>
+  </div>
+);
+
+const WatchedCard = ({
+  item,
   currentUser, // 'user1' | 'user2'
   settings,
-  isEditing, 
-  onToggleEdit, 
-  onDelete, 
-  expandedShow, 
-  setExpandedShow,
-  onSave
+  isExpanded,
+  onToggleExpanded,
+  onDelete,
+  onSetRating,
+  onSetEpisodeRating
 }) => {
-  const isExpanded = expandedShow === item.id;
-  const isDNF = item.status === 'DNF'; // DNF Status Check
-  
-  // Local state for Batch Editing
-  const [localRatings, setLocalRatings] = useState({
-    anthony: item.anthonyRating || 0,
-    pam: item.pamRating || 0
-  });
-  const [localEpisodes, setLocalEpisodes] = useState(item.episodes || []);
+  const [isRating, setIsRating] = useState(false);
+  const isDNF = item.status === 'DNF';
+  const partner = otherUser(currentUser);
+  const myField = ratingField(currentUser);
+  const partnerField = ratingField(partner);
+  const myRating = item[myField] || 0;
+  const avg = averageRating(item.anthonyRating, item.pamRating);
+  const episodes = item.episodes || [];
 
-  useEffect(() => {
-    if (!isEditing) {
-      setLocalRatings({
-        anthony: item.anthonyRating || 0,
-        pam: item.pamRating || 0
-      });
-      setLocalEpisodes(item.episodes || []);
-    }
-  }, [item, isEditing]);
-
-  const handleShowRatingChange = (userKey, value) => {
-    setLocalRatings(prev => ({ ...prev, [userKey]: value }));
-  };
-
-  const handleEpisodeChange = (episodeNum, seasonNum, userKey, newRating) => {
-    const dbField = ratingField(userKey);
-    const localKey = userKey === 'user1' ? 'anthony' : 'pam';
-    // 1. Update the specific episode in the local list
-    const updatedEpisodes = localEpisodes.map(ep => {
-      const isMatch = (ep.season === seasonNum && ep.num === episodeNum) || 
-                      (!ep.season && ep.num === episodeNum);
-      
-      if (isMatch) {
-        return { ...ep, [dbField]: newRating };
-      }
-      return ep;
-    });
-    setLocalEpisodes(updatedEpisodes);
-
-    // 2. Auto-recalculate Top Level Average for that user locally
-    const ratedEps = updatedEpisodes.filter(ep => (ep[dbField] || 0) > 0);
-    
-    if (ratedEps.length > 0) {
-      const sum = ratedEps.reduce((acc, ep) => acc + (ep[dbField] || 0), 0);
-      const newAvg = Math.round(sum / ratedEps.length);
-      handleShowRatingChange(localKey, newAvg);
-    }
-  };
-
-  const handleDone = () => {
-    // Save only my own overall rating so a stale copy can't overwrite my partner's.
-    const myLocalKey = currentUser === 'user1' ? 'anthony' : 'pam';
-    onSave(item.id, {
-      [ratingField(currentUser)]: localRatings[myLocalKey],
-      episodes: localEpisodes
-    });
-  };
-
-  const avgRating = averageRating(localRatings.anthony, localRatings.pam).toFixed(1);
-  
-  const episodesBySeason = localEpisodes.reduce((acc, ep) => {
+  const episodesBySeason = episodes.reduce((acc, ep) => {
     const s = ep.season || 1;
-    if (!acc[s]) acc[s] = [];
-    acc[s].push(ep);
+    (acc[s] ||= []).push(ep);
     return acc;
   }, {});
 
   return (
-    <div className={`rounded-lg shadow-lg p-4 mb-3 border ${isDNF ? 'bg-gray-800 border-red-900 opacity-75' : 'bg-gray-800 border-gray-700'}`}>
-      <div className="flex gap-3 mb-3">
+    <article className={`rounded-lg shadow-lg p-4 mb-3 border bg-gray-800 ${isDNF ? 'border-red-900' : 'border-gray-700'}`}>
+      <div className="flex gap-3">
         {item.posterPath && (
-          <img src={item.posterPath} alt={item.title} className={`w-20 h-28 object-cover rounded ${isDNF ? 'grayscale' : ''}`} />
+          <img src={item.posterPath} alt="" className={`w-16 h-24 object-cover rounded shrink-0 ${isDNF ? 'grayscale' : ''}`} />
         )}
-        <div className="flex-1">
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="font-semibold text-lg text-white">{item.title}</h3>
-              {item.year && <p className="text-sm text-gray-400">{item.year}</p>}
-              
-              {isDNF ? (
-                <span className="inline-flex items-center gap-1 text-red-400 text-xs font-bold border border-red-900 px-2 py-0.5 rounded bg-red-900/20 mt-1">
-                  <Ban size={12} /> DNF (Abandoned)
-                </span>
-              ) : (
-                <span className="text-gray-400 text-sm mt-1 block">Watched {item.watchedDate}</span>
-              )}
-            </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start gap-2">
+            <h2 className="font-semibold text-lg text-white leading-tight">{item.title}</h2>
+            {!isDNF && avg > 0 && (
+              <span className="text-lg font-bold text-green-400 tabular-nums shrink-0">
+                {avg.toFixed(1)}<span className="text-sm text-gray-300">/10</span>
+                <span className="sr-only"> average</span>
+              </span>
+            )}
           </div>
-          
+          {isDNF ? (
+            <span className="inline-flex items-center gap-1 text-red-200 text-xs font-bold border border-red-800 px-2 py-0.5 rounded bg-red-900/40 mt-1">
+              <Ban size={12} aria-hidden="true" /> Abandoned
+            </span>
+          ) : (
+            item.watchedDate && <p className="text-gray-300 text-sm mt-1">Watched {item.watchedDate}</p>
+          )}
           <div className="flex gap-2 text-sm mt-2 flex-wrap">
-            <span className="bg-blue-900 text-blue-300 px-2 py-0.5 rounded">{item.type}</span>
-            <span className="bg-purple-900 text-purple-300 px-2 py-0.5 rounded">{item.service}</span>
+            <span className="bg-blue-900 text-blue-200 px-2 py-0.5 rounded">{item.type}</span>
+            {item.service && <span className="bg-purple-900 text-purple-200 px-2 py-0.5 rounded">{item.service}</span>}
           </div>
         </div>
       </div>
-      
+
       {!isDNF && (
-        <div className="flex justify-between items-start mb-3 pt-3 border-t border-gray-700">
-          <div className="flex items-center gap-1"></div>
-          <div className="flex items-start gap-2">
-            <div className="flex flex-col items-end">
-              <div className="text-lg font-bold text-green-400 mb-1">{avgRating}/10</div>
-              <StarRating rating={Math.round(Number(avgRating))} size={16} />
-              <div className="text-xs text-gray-400 mt-1">avg rating</div>
-            </div>
-            <button onClick={() => onDelete(item.id)} className="text-red-400 hover:text-red-300 p-1 ml-2">
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isDNF && (
-        <div className="flex justify-end pt-2">
-           <button onClick={() => onDelete(item.id)} className="text-red-400 hover:text-red-300 p-1">
-              <Trash2 size={16} />
-            </button>
-        </div>
-      )}
-      
-      {!isDNF && (
-        <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-700">
-          <div>
-            <div className="text-xs font-bold mb-1" style={{ color: userColor(settings, 'user1') }}>{userName(settings, 'user1')}</div>
-            <StarRating 
-              rating={localRatings.anthony} 
-              editable={isEditing && currentUser === 'user1'} 
-              onRate={(r) => handleShowRatingChange('anthony', r)}
-            />
-          </div>
-          <div>
-            <div className="text-xs font-bold mb-1" style={{ color: userColor(settings, 'user2') }}>{userName(settings, 'user2')}</div>
-            <StarRating 
-              rating={localRatings.pam} 
-              editable={isEditing && currentUser === 'user2'} 
-              onRate={(r) => handleShowRatingChange('pam', r)}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-2 mt-3">
-        <button 
-          onClick={isEditing ? handleDone : onToggleEdit}
-          className="flex-1 bg-gray-700 text-gray-200 py-2 rounded hover:bg-gray-600 flex items-center justify-center gap-2"
-        >
-          <Edit2 size={16} />
-          {isEditing ? 'Done' : 'Edit Rating'}
-        </button>
-      </div>
-
-      {!isDNF && localEpisodes.length > 0 && (
-        <div className="mt-3 border-t border-gray-700 pt-2">
-          <div className="flex justify-between items-center">
-            <button 
-              onClick={() => setExpandedShow(isExpanded ? null : item.id)}
-              className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 w-full justify-center py-2"
+        <div className="mt-3 pt-2 border-t border-gray-700">
+          <RatingRow settings={settings} userKey={currentUser} value={myRating}>
+            <button
+              type="button"
+              aria-expanded={isRating}
+              onClick={() => setIsRating((v) => !v)}
+              className="min-h-11 px-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm font-semibold text-white"
             >
-              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              {isExpanded ? 'Hide' : 'Show'} Episodes ({localEpisodes.length})
+              {isRating ? 'Cancel' : myRating ? 'Change' : 'Rate'}
             </button>
-          </div>
-          
+          </RatingRow>
+          {isRating && (
+            <div className="py-2">
+              <RatingPicker
+                label={`Your rating for ${item.title}`}
+                value={myRating}
+                onChange={(value) => { onSetRating(item, value); setIsRating(false); }}
+              />
+            </div>
+          )}
+          <RatingRow settings={settings} userKey={partner} value={item[partnerField] || 0} />
+        </div>
+      )}
+
+      {!isDNF && episodes.length > 0 && (
+        <div className="mt-2 border-t border-gray-700 pt-1">
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={onToggleExpanded}
+            className="flex items-center gap-2 text-sm text-blue-300 hover:text-blue-200 w-full justify-center min-h-11"
+          >
+            {isExpanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+            {isExpanded ? 'Hide' : 'Show'} episodes ({episodes.length})
+          </button>
+
           {isExpanded && (
-            <div className="mt-3 space-y-4">
-              {Object.keys(episodesBySeason).map(seasonNum => (
-                <div key={seasonNum}>
-                  <h4 className="text-xs uppercase font-bold text-gray-500 mb-2 border-b border-gray-700 pb-1">
-                    Season {seasonNum}
-                  </h4>
-                  <div className="space-y-2">
-                    {episodesBySeason[seasonNum].map(ep => (
-                      <div key={`${ep.season}-${ep.num}`} className="bg-gray-700 p-3 rounded">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-start gap-3">
-                            <span className="font-medium text-white">
-                              {ep.season ? `E${ep.num}` : `Episode ${ep.num}`}: {ep.title}
-                            </span>
-                          </div>
-                          <div className="text-sm font-semibold text-gray-300">
-                            {averageRating(ep.anthonyRating, ep.pamRating).toFixed(1)}/10
-                          </div>
+            <div className="mt-2 space-y-4">
+              {Object.keys(episodesBySeason).map((seasonNum) => (
+                <section key={seasonNum} aria-label={`Season ${seasonNum}`}>
+                  <h3 className="text-xs uppercase font-bold text-gray-300 mb-2 border-b border-gray-700 pb-1">Season {seasonNum}</h3>
+                  <ul className="space-y-2">
+                    {episodesBySeason[seasonNum].map((ep) => (
+                      <li key={`${ep.season}-${ep.num}`} className="bg-gray-700 p-3 rounded flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-white truncate">E{ep.num}: {ep.title}</p>
+                          <p className="text-xs text-gray-200">
+                            {userName(settings, partner)}: {ep[partnerField] ? `${ep[partnerField]}/10` : 'not rated'}
+                          </p>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div>
-                            <div className="mb-1" style={{ color: userColor(settings, 'user1') }}>{userName(settings, 'user1')}</div>
-                            <StarRating 
-                              rating={ep.anthonyRating} 
-                              maxStars={10} 
-                              size={16}
-                              editable={isEditing && currentUser === 'user1'} 
-                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, 'user1', r)}
-                            />
-                          </div>
-                          <div>
-                            <div className="mb-1" style={{ color: userColor(settings, 'user2') }}>{userName(settings, 'user2')}</div>
-                            <StarRating 
-                              rating={ep.pamRating} 
-                              maxStars={10} 
-                              size={16}
-                              editable={isEditing && currentUser === 'user2'} 
-                              onRate={(r) => handleEpisodeChange(ep.num, ep.season, 'user2', r)}
-                            />
-                          </div>
-                        </div>
-                      </div>
+                        <RatingSelect
+                          label={`Your rating for season ${ep.season || 1} episode ${ep.num}`}
+                          value={ep[myField] || 0}
+                          onChange={(value) => onSetEpisodeRating(item, ep, value)}
+                        />
+                      </li>
                     ))}
-                  </div>
-                </div>
+                  </ul>
+                </section>
               ))}
             </div>
           )}
         </div>
       )}
-    </div>
+
+      <div className="flex justify-end mt-2">
+        <button
+          type="button"
+          onClick={() => onDelete(item)}
+          aria-label={`Delete ${item.title}`}
+          className="min-w-11 min-h-11 flex items-center justify-center text-red-300 hover:text-red-200 rounded-lg"
+        >
+          <Trash2 size={18} aria-hidden="true" />
+        </button>
+      </div>
+    </article>
   );
 };
 

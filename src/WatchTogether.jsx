@@ -1,10 +1,9 @@
 // src/WatchTogether.jsx
-import React, { useState, useEffect } from 'react';
-import { Plus, User, ArrowUpDown, RefreshCw, Dice5, BarChart2, Settings } from 'lucide-react'; // Added Settings Icon
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus, User, RefreshCw, Dice5, BarChart2, Settings } from 'lucide-react';
 import api from './services/api';
 import tmdbService from './services/tmdbService';
 
-// Component Imports
 import ToWatchCard from './components/cards/ToWatchCard';
 import WatchedCard from './components/cards/WatchedCard';
 import AddModal from './components/modals/AddModal';
@@ -13,10 +12,13 @@ import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import StatsModal from './components/modals/StatsModal';
 import SettingsModal from './components/modals/SettingsModal';
-import { DEFAULT_SETTINGS, USER_KEYS, averageRating, ratingField, resolveUserKey, userName } from './users';
+import { useToast } from './components/common/Toast';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
+import { isMovie, lastWatchedEpisode, mediaTypeOf, sameTitle } from './titles';
 
 const SETTINGS_CACHE_KEY = 'watchTogetherSettings';
 const CURRENT_USER_KEY = 'watchTogetherUser';
+const today = () => new Date().toISOString().split('T')[0];
 
 function readCachedSettings() {
   try {
@@ -27,45 +29,78 @@ function readCachedSettings() {
   }
 }
 
-const WatchTogether = () => {
-  // Settings are shared through the server ('settings/app'); localStorage is only a cache for first paint.
-  const [appSettings, setAppSettings] = useState(readCachedSettings);
+function readSavedUser() {
+  try {
+    return resolveUserKey(localStorage.getItem(CURRENT_USER_KEY), readCachedSettings());
+  } catch {
+    return null;
+  }
+}
 
-  // currentUser is a stable key: 'user1' | 'user2'
-  const [currentUser, setCurrentUser] = useState(null);
-  const [showUserSelect, setShowUserSelect] = useState(false);
+// Keeps a collection in sync: refetches on every (re)connect, then applies live puts/deletes.
+function useLiveCollection(collection, enabled) {
+  const [items, setItems] = useState([]);
+  const [status, setStatus] = useState('loading'); // loading | ready | error
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let active = true;
+    const refetch = () => api.getCollection(collection)
+      .then((list) => { if (active) { setItems(list); setStatus('ready'); } })
+      .catch(() => { if (active) setStatus((s) => (s === 'ready' ? s : 'error')); });
+
+    const unsubscribe = api.subscribe(collection, {
+      onSync: refetch,
+      onPut: (item) => setItems((prev) => {
+        const idx = prev.findIndex((i) => i.id === item.id);
+        if (idx === -1) return [...prev, item];
+        const next = [...prev];
+        next[idx] = item;
+        return next;
+      }),
+      onDelete: (id) => setItems((prev) => prev.filter((i) => i.id !== id))
+    });
+    refetch();
+    return () => { active = false; unsubscribe(); };
+  }, [collection, enabled]);
+
+  return { items, status };
+}
+
+const WatchTogether = () => {
+  const toast = useToast();
+  const [appSettings, setAppSettings] = useState(readCachedSettings);
+  const [currentUser, setCurrentUser] = useState(readSavedUser); // 'user1' | 'user2'
+  const [showUserSelect, setShowUserSelect] = useState(() => !readSavedUser());
   const [activeTab, setActiveTab] = useState('toWatch');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showRatingModal, setShowRatingModal] = useState(false);
-  const [showStatsModal, setShowStatsModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false); // NEW
+  const [modal, setModal] = useState(null); // 'add' | 'rate' | 'stats' | 'settings' | 'trailer'
   const [sortMethod, setSortMethod] = useState('priority');
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  
-  // Card States
   const [expandedShow, setExpandedShow] = useState(null);
-  const [editingWatchedId, setEditingWatchedId] = useState(null);
-  const [editingToWatchId, setEditingToWatchId] = useState(null);
   const [itemToRate, setItemToRate] = useState(null);
-  const [currentTrailer, setCurrentTrailer] = useState(null);
+  const [trailer, setTrailer] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
 
-  // Data States
-  const [toWatch, setToWatch] = useState([]);
-  const [watched, setWatched] = useState([]);
+  const { items: toWatch, status: toWatchStatus } = useLiveCollection('toWatch', Boolean(currentUser));
+  const { items: watched, status: watchedStatus } = useLiveCollection('watched', Boolean(currentUser));
 
-  useEffect(() => {
-    // Older versions saved the display name here; migrate it to a key.
-    const savedUser = resolveUserKey(localStorage.getItem(CURRENT_USER_KEY), readCachedSettings());
-    if (savedUser) {
-      setCurrentUser(savedUser);
-      localStorage.setItem(CURRENT_USER_KEY, savedUser);
-    } else {
-      setShowUserSelect(true);
+  const closeModal = () => setModal(null);
+
+  // Runs a write; on failure shows an error toast. Returns true on success.
+  const attempt = useCallback(async (fn, failMessage) => {
+    try {
+      await fn();
+      return true;
+    } catch (err) {
+      console.error(err);
+      toast({ message: failMessage, tone: 'error' });
+      return false;
     }
-  }, []);
+  }, [toast]);
 
+  // Shared settings (names/colors) live on the server; localStorage only speeds up first paint.
   useEffect(() => {
-    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(appSettings)); } catch { /* storage full or blocked */ }
+    try { localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(appSettings)); } catch { /* storage blocked */ }
   }, [appSettings]);
 
   useEffect(() => {
@@ -74,54 +109,39 @@ const WatchTogether = () => {
       const { id, ...rest } = doc;
       setAppSettings({ ...DEFAULT_SETTINGS, ...rest });
     };
-    api.getDoc('settings', 'app').then(applySettings).catch(() => { /* not saved yet: keep cache/defaults */ });
-    return api.subscribe('settings', { onPut: applySettings, onDelete: () => setAppSettings(DEFAULT_SETTINGS) });
+    const load = () => api.getDoc('settings', 'app').then(applySettings).catch(() => { /* not saved yet */ });
+    return api.subscribe('settings', { onSync: load, onPut: applySettings, onDelete: () => setAppSettings(DEFAULT_SETTINGS) });
   }, []);
 
   useEffect(() => {
-    if (!currentUser) return;
-
-    let active = true;
-    const applyPut = (setter) => (item) => setter(prev => {
-      const idx = prev.findIndex(i => i.id === item.id);
-      if (idx === -1) return [...prev, item];
-      const next = [...prev];
-      next[idx] = item;
-      return next;
-    });
-    const applyDelete = (setter) => (id) => setter(prev => prev.filter(i => i.id !== id));
-
-    api.getCollection('toWatch').then(items => { if (active) setToWatch(items); });
-    api.getCollection('watched').then(items => { if (active) setWatched(items); });
-
-    const unsubToWatch = api.subscribe('toWatch', {
-      onPut: applyPut(setToWatch),
-      onDelete: applyDelete(setToWatch)
-    });
-    const unsubWatched = api.subscribe('watched', {
-      onPut: applyPut(setWatched),
-      onDelete: applyDelete(setWatched)
-    });
-
-    return () => { active = false; unsubToWatch(); unsubWatched(); };
-  }, [currentUser]);
+    if (!highlightId) return undefined;
+    const t = setTimeout(() => setHighlightId(null), 4000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   const handleSaveSettings = async (newSettings) => {
     setAppSettings(newSettings);
-    setShowSettingsModal(false);
-    await api.setDoc('settings', 'app', newSettings);
+    closeModal();
+    if (await attempt(() => api.setDoc('settings', 'app', newSettings), "Couldn't save settings.")) {
+      toast({ message: 'Settings saved', tone: 'success' });
+    }
   };
 
   const handleUserSelect = (userKey) => {
     if (!USER_KEYS.includes(userKey)) return;
     setCurrentUser(userKey);
-    localStorage.setItem(CURRENT_USER_KEY, userKey);
+    try { localStorage.setItem(CURRENT_USER_KEY, userKey); } catch { /* storage blocked */ }
     setShowUserSelect(false);
   };
 
   const handleAddItem = async (selectedShow, selectedService) => {
     if (!selectedShow) return;
-    const item = {
+    if (toWatch.some((t) => sameTitle(t, selectedShow))) {
+      toast({ message: `${selectedShow.title} is already on your list.` });
+      closeModal();
+      return;
+    }
+    const ok = await attempt(() => api.setDoc('toWatch', api.newId(), {
       title: selectedShow.title,
       type: selectedShow.type,
       service: selectedService,
@@ -134,269 +154,328 @@ const WatchTogether = () => {
       rating: selectedShow.rating,
       year: selectedShow.year,
       releaseDate: selectedShow.releaseDate,
-      addedDate: new Date().toISOString().split('T')[0],
+      addedDate: today(),
       addedBy: currentUser,
       createdAt: new Date().toISOString()
-    };
-    await api.setDoc('toWatch', api.newId(), item);
-    setShowAddModal(false);
+    }), "Couldn't add the title.");
+    if (!ok) return;
+    closeModal();
+    toast({ message: `Added ${selectedShow.title}`, tone: 'success' });
   };
 
   const handleMarkWatched = (item) => {
     setItemToRate(item);
-    setShowRatingModal(true);
+    setModal('rate');
   };
 
-  const handleSubmitRating = async (anthonyRating, pamRating, episodes = [], isDNF = false) => {
+  const handleSubmitRating = async (myOverall, episodes = [], isDNF = false) => {
     const { id, ...itemData } = itemToRate;
     const myField = ratingField(currentUser);
     const otherField = ratingField(currentUser === 'user1' ? 'user2' : 'user1');
-    const myOverall = (currentUser === 'user1' ? anthonyRating : pamRating) || 0;
 
-    const cleanNewEpisodes = episodes.filter(ep => ep.isSelected).map(({ isSelected, ...ep }) => ep);
-    const existingShow = watched.find(w => w.tmdbId === itemToRate.tmdbId && w.mediaType === itemToRate.mediaType);
+    const cleanNewEpisodes = episodes.filter((ep) => ep.isSelected).map(({ isSelected, ...ep }) => ep);
+    const existingShow = watched.find((w) => sameTitle(w, itemToRate));
 
     let finalEpisodes = cleanNewEpisodes;
     if (existingShow) {
       const episodeMap = new Map();
-      (existingShow.episodes || []).forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
-      cleanNewEpisodes.forEach(ep => episodeMap.set(`${ep.season}-${ep.num}`, ep));
+      (existingShow.episodes || []).forEach((ep) => episodeMap.set(`${ep.season}-${ep.num}`, ep));
+      cleanNewEpisodes.forEach((ep) => episodeMap.set(`${ep.season}-${ep.num}`, ep));
       finalEpisodes = Array.from(episodeMap.values());
     }
 
     // My overall rating: what I picked, else my episode average, else what was already saved.
-    let myRating = myOverall;
-    if (!myRating && !isDNF) myRating = Math.round(averageRating(...finalEpisodes.map(e => e[myField])));
+    let myRating = myOverall || 0;
+    if (!myRating && !isDNF) myRating = Math.round(averageRating(...finalEpisodes.map((e) => e[myField])));
     if (!myRating && existingShow) myRating = existingShow[myField] || 0;
 
     const doc = {
       ...itemData,
       [myField]: myRating,
-      watchedDate: new Date().toISOString().split('T')[0],
+      watchedDate: today(),
       episodes: finalEpisodes.length > 0 ? finalEpisodes : null,
       ratedBy: currentUser,
       status: isDNF ? 'DNF' : 'Completed',
       updatedAt: new Date().toISOString()
     };
-    // Never overwrite the partner's saved rating; start it unrated on a new entry.
-    if (!existingShow) doc[otherField] = 0;
+    delete doc.isNewEpisodes;
+    if (!existingShow) doc[otherField] = 0; // never overwrite the partner's saved rating
 
-    await api.setDoc('watched', existingShow ? existingShow.id : api.newId(), doc);
+    const saved = await attempt(() => api.setDoc('watched', existingShow ? existingShow.id : api.newId(), doc), "Couldn't save the rating.");
+    if (!saved) return; // keep the modal open so nothing is lost
 
-    const isMovie = itemToRate.type === 'Movie' || itemToRate.mediaType === 'movie';
-    const allFinished = episodes.length === 0 || episodes.every(ep => ep.isSelected);
-    if (isMovie || allFinished || isDNF) {
-      await api.deleteDoc('toWatch', itemToRate.id);
+    const allFinished = episodes.length === 0 || episodes.every((ep) => ep.isSelected);
+    if (isMovie(itemToRate) || allFinished || isDNF) {
+      await attempt(() => api.deleteDoc('toWatch', itemToRate.id), "Saved, but couldn't remove it from To Watch.");
     }
-
-    setShowRatingModal(false);
+    closeModal();
     setItemToRate(null);
+    toast({ message: isDNF ? `${itemToRate.title} marked as abandoned` : `${itemToRate.title} moved to Watched`, tone: 'success' });
   };
 
   const handleRandomPick = () => {
-    const highPriorityItems = toWatch.filter(
-      item => (item.anthonyPriority || 0) > 1 && (item.pamPriority || 0) > 1
-    );
-    const pool = highPriorityItems.length > 1 ? highPriorityItems : toWatch;
-    
+    const highPriority = toWatch.filter((item) => (item.anthonyPriority || 0) > 1 && (item.pamPriority || 0) > 1);
+    const pool = highPriority.length > 1 ? highPriority : toWatch;
     if (pool.length === 0) {
-      alert("Add some shows first!");
+      toast({ message: 'Add some shows first.' });
       return;
     }
-    const randomItem = pool[Math.floor(Math.random() * pool.length)];
-    const sourceText = pool === highPriorityItems ? "your High Priority favorites" : "the full list";
-    alert(`🎲 Fate chose: ${randomItem.title}!\n(Picked from ${sourceText})`);
-  };
-
-  const handlePlayTrailer = async (item) => {
-    const videoKey = await tmdbService.getVideos(item.tmdbId, item.mediaType || (item.type === 'Movie' ? 'movie' : 'tv'));
-    if (videoKey) {
-      setCurrentTrailer(videoKey);
-    } else {
-      alert("No trailer found for this title.");
-    }
-  };
-
-  const handleCheckForUpdates = async () => {
-    setIsCheckingUpdates(true);
-    let updatesCount = 0;
-    try {
-      const tvShows = watched.filter(item => (item.type === 'TV Show' || item.mediaType === 'tv') && item.status !== 'DNF');
-      for (const show of tvShows) {
-        if (!show.tmdbId) continue;
-        if (toWatch.some(t => t.tmdbId === show.tmdbId)) continue;
-
-        const details = await tmdbService.getDetails(show.tmdbId, 'tv');
-        if (details && details.numberOfEpisodes > (show.episodes ? show.episodes.length : 0)) {
-          await api.setDoc('toWatch', api.newId(), {
-            title: show.title,
-            type: 'TV Show',
-            service: show.service || 'Unknown',
-            anthonyPriority: 3, pamPriority: 3,
-            tmdbId: show.tmdbId, mediaType: 'tv',
-            posterPath: show.posterPath, overview: show.overview,
-            rating: show.rating, year: show.year,
-            addedDate: new Date().toISOString().split('T')[0],
-            addedBy: 'System', createdAt: new Date().toISOString(),
-            isNewEpisodes: true
-          });
-          updatesCount++;
-        }
-      }
-      alert(updatesCount > 0 ? `Found ${updatesCount} shows with new episodes!` : "You are up to date!");
-      if (updatesCount > 0) setActiveTab('toWatch');
-    } catch (err) { console.error(err); alert("Update check failed."); }
-    setIsCheckingUpdates(false);
-  };
-
-  const handleDeleteItem = (id) => api.deleteDoc('toWatch', id);
-  const handleDeleteWatched = (id) => api.deleteDoc('watched', id);
-  const handleSaveToWatch = async (id, data) => {
-    await api.setDoc('toWatch', id, data);
-    setEditingToWatchId(null);
-  };
-  const handleSaveWatched = async (id, data) => {
-    await api.setDoc('watched', id, data);
-    setEditingWatchedId(null);
-  };
-
-  const getSortedItems = (items, type) => {
-    return [...items].sort((a, b) => {
-      if (sortMethod === 'status') {
-        const aDNF = a.status === 'DNF' ? 1 : 0;
-        const bDNF = b.status === 'DNF' ? 1 : 0;
-        if (aDNF !== bDNF) return bDNF - aDNF;
-        return a.title.localeCompare(b.title);
-      }
-      if (sortMethod === 'title') return a.title.localeCompare(b.title);
-      if (sortMethod === 'service') return (a.service || '').localeCompare(b.service || '');
-      
-      const calcPrio = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
-      const calcRating = (i) => averageRating(i.anthonyRating, i.pamRating);
-      
-      return type === 'toWatch' ? calcPrio(b) - calcPrio(a) : calcRating(b) - calcRating(a);
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const show = () => {
+      setHighlightId(pick.id);
+      document.getElementById(`card-${pick.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    show();
+    toast({
+      message: `🎲 ${pick.title} (from ${pool === highPriority ? 'your shared Med/High picks' : 'the full list'})`,
+      action: { label: 'Watched', onClick: () => handleMarkWatched(pick) },
+      duration: 7000
     });
   };
 
-  if (showUserSelect) return <UserSelectModal settings={appSettings} onSelectUser={handleUserSelect} />;
-  if (!currentUser) return <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">Loading...</div>;
-
-  const sortedItems = getSortedItems(activeTab === 'toWatch' ? toWatch : watched, activeTab);
-
-  // Dynamic Header Style
-  const headerStyle = {
-    background: `linear-gradient(to right, ${appSettings.user1Color}, ${appSettings.user2Color})`
+  const handlePlayTrailer = async (item) => {
+    const videoKey = await tmdbService.getVideos(item.tmdbId, mediaTypeOf(item));
+    if (videoKey) {
+      setTrailer({ key: videoKey, title: item.title });
+      setModal('trailer');
+    } else {
+      toast({ message: `No trailer found for ${item.title}.` });
+    }
   };
 
+  // Re-adds watched shows whose latest aired episode is newer than the last one you logged.
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdates(true);
+    let added = 0;
+    let failed = 0;
+    const shows = watched.filter((item) => !isMovie(item) && item.status !== 'DNF' && item.tmdbId && !toWatch.some((t) => sameTitle(t, item)));
+    for (const show of shows) {
+      const details = await tmdbService.getDetails(show.tmdbId, 'tv');
+      if (!details) { failed++; continue; }
+      const aired = details.lastEpisodeToAir;
+      const last = lastWatchedEpisode(show.episodes || []);
+      const hasNew = aired && (!last || aired.season > last.season || (aired.season === last.season && aired.num > last.num));
+      if (!hasNew) continue;
+      try {
+        await api.setDoc('toWatch', api.newId(), {
+          title: show.title,
+          type: 'TV Show',
+          service: show.service || 'Unknown',
+          anthonyPriority: 0,
+          pamPriority: 0,
+          tmdbId: show.tmdbId,
+          mediaType: 'tv',
+          posterPath: show.posterPath,
+          overview: show.overview,
+          rating: show.rating,
+          year: show.year,
+          addedDate: today(),
+          addedBy: 'System',
+          createdAt: new Date().toISOString(),
+          isNewEpisodes: true
+        });
+        added++;
+      } catch {
+        failed++;
+      }
+    }
+    setIsCheckingUpdates(false);
+    if (failed) toast({ message: `Couldn't check ${failed} show${failed > 1 ? 's' : ''}. Try again later.`, tone: 'error' });
+    toast({ message: added ? `Found new episodes for ${added} show${added > 1 ? 's' : ''}.` : 'No new episodes.', tone: added ? 'success' : 'info' });
+    if (added) setActiveTab('toWatch');
+  };
+
+  // Delete right away, with Undo that puts the same document back.
+  const handleDelete = async (collection, item) => {
+    const { id, ...data } = item;
+    if (!(await attempt(() => api.deleteDoc(collection, id), `Couldn't delete ${item.title}.`))) return;
+    toast({
+      message: `Deleted ${item.title}`,
+      action: { label: 'Undo', onClick: () => attempt(() => api.setDoc(collection, id, data), "Couldn't restore it.") },
+      duration: 7000
+    });
+  };
+
+  const handleSetPriority = (item, value) =>
+    attempt(() => api.setDoc('toWatch', item.id, { [priorityField(currentUser)]: value }), "Couldn't save your priority.");
+
+  const handleSetRating = (item, value) =>
+    attempt(() => api.setDoc('watched', item.id, { [ratingField(currentUser)]: value }), "Couldn't save your rating.");
+
+  // Changing an episode rating also updates your overall rating to your episode average.
+  const handleSetEpisodeRating = (item, episode, value) => {
+    const field = ratingField(currentUser);
+    const episodes = (item.episodes || []).map((ep) => (ep.season === episode.season && ep.num === episode.num ? { ...ep, [field]: value } : ep));
+    const avg = Math.round(averageRating(...episodes.map((e) => e[field])));
+    return attempt(() => api.setDoc('watched', item.id, { episodes, [field]: avg || item[field] || 0 }), "Couldn't save the episode rating.");
+  };
+
+  const getSortedItems = (items, type) => [...items].sort((a, b) => {
+    if (sortMethod === 'status') {
+      const diff = (b.status === 'DNF') - (a.status === 'DNF');
+      return diff || a.title.localeCompare(b.title);
+    }
+    if (sortMethod === 'title') return a.title.localeCompare(b.title);
+    if (sortMethod === 'service') return (a.service || '').localeCompare(b.service || '');
+    const prio = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
+    const rating = (i) => averageRating(i.anthonyRating, i.pamRating);
+    return type === 'toWatch' ? prio(b) - prio(a) : rating(b) - rating(a);
+  });
+
+  if (showUserSelect || !currentUser) return <UserSelectModal settings={appSettings} onSelectUser={handleUserSelect} />;
+
+  const isToWatch = activeTab === 'toWatch';
+  const list = isToWatch ? toWatch : watched;
+  const listStatus = isToWatch ? toWatchStatus : watchedStatus;
+  const sortedItems = getSortedItems(list, activeTab);
+  const iconButton = 'min-w-11 min-h-11 flex items-center justify-center rounded-lg text-white';
+  const headerStyle = { background: `linear-gradient(to right, ${appSettings.user1Color}, ${appSettings.user2Color})` };
+
   return (
-    <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen pb-20">
-      {/* Dynamic Header */}
-      <div style={headerStyle} className="text-white p-6 shadow-lg">
-        <div className="flex justify-between items-center mb-2">
-          <div><h1 className="text-2xl font-bold">Watch Together</h1><p className="text-sm opacity-80">Current: {userName(appSettings, currentUser)}</p></div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowSettingsModal(true)} className="text-white hover:text-gray-200 p-2"><Settings size={20} /></button>
-            <button onClick={() => setShowUserSelect(true)} className="text-white hover:text-gray-200 p-2"><User size={20} /></button>
+    <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen pb-24">
+      <header style={headerStyle} className="text-white px-4 py-3 shadow-lg">
+        <div className="flex justify-between items-center gap-2 [text-shadow:0_1px_2px_rgb(0_0_0/50%)]">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold leading-tight">Watch Together</h1>
+            <p className="text-sm">Signed in as {userName(appSettings, currentUser)}</p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <button type="button" onClick={() => setModal('settings')} aria-label="Settings" className={`${iconButton} hover:bg-black/20`}>
+              <Settings size={22} aria-hidden="true" />
+            </button>
+            <button type="button" onClick={() => setShowUserSelect(true)} aria-label="Switch profile" className={`${iconButton} hover:bg-black/20`}>
+              <User size={22} aria-hidden="true" />
+            </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-700 bg-gray-800">
-        <button onClick={() => setActiveTab('toWatch')} className={`flex-1 py-3 font-medium ${activeTab === 'toWatch' ? 'border-b-2 border-blue-500 text-blue-400' : 'text-gray-400'}`}>To Watch ({toWatch.length})</button>
-        <button onClick={() => setActiveTab('watched')} className={`flex-1 py-3 font-medium ${activeTab === 'watched' ? 'border-b-2 border-green-500 text-green-400' : 'text-gray-400'}`}>Watched ({watched.length})</button>
-      </div>
+      <nav aria-label="Lists" className="bg-gray-800 border-b border-gray-700">
+        <div role="tablist" className="flex">
+        {[['toWatch', 'To Watch', toWatch.length, 'border-blue-400 text-blue-300'], ['watched', 'Watched', watched.length, 'border-green-400 text-green-300']].map(([key, label, count, activeClass]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`tab-${key}`}
+            aria-selected={activeTab === key}
+            aria-controls="list-panel"
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 min-h-12 font-medium border-b-2 ${activeTab === key ? activeClass : 'border-transparent text-gray-300'}`}
+          >
+            {label} ({count})
+          </button>
+        ))}
+        </div>
+      </nav>
 
-      <div className="p-4">
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-2">
-            <ArrowUpDown size={16} className="text-gray-400" />
-            <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value)} className="bg-gray-800 text-white text-sm border border-gray-600 rounded px-2 py-1">
-              <option value="priority">{activeTab === 'toWatch' ? 'Priority' : 'Rating'}</option>
-              {activeTab === 'watched' && <option value="status">Status (DNF)</option>}
+      <main className="p-4">
+        <div id="list-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`}>
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+          <label className="flex items-center gap-2 text-sm text-gray-200">
+            Sort
+            <select
+              value={sortMethod}
+              onChange={(e) => setSortMethod(e.target.value)}
+              className="bg-gray-800 text-white border border-gray-500 rounded-lg px-2 min-h-11"
+            >
+              <option value="priority">{isToWatch ? 'Priority' : 'Rating'}</option>
+              {!isToWatch && <option value="status">Abandoned first</option>}
               <option value="title">Title</option>
               <option value="service">Service</option>
             </select>
-          </div>
+          </label>
           <div className="flex items-center gap-2">
-            {activeTab === 'toWatch' && (
-              <button onClick={handleRandomPick} className="bg-purple-700 text-white p-2 rounded-lg hover:bg-purple-600" title="Pick for me">
-                <Dice5 size={20} />
+            {isToWatch && (
+              <button type="button" onClick={handleRandomPick} aria-label="Pick something for us" title="Pick for us" className={`${iconButton} bg-purple-700 hover:bg-purple-600`}>
+                <Dice5 size={20} aria-hidden="true" />
               </button>
             )}
-            
-            <button onClick={() => setShowStatsModal(true)} className="bg-gray-700 text-white p-2 rounded-lg hover:bg-gray-600" title="Stats">
-              <BarChart2 size={20} />
+            <button type="button" onClick={() => setModal('stats')} aria-label="Stats" title="Stats" className={`${iconButton} bg-gray-700 hover:bg-gray-600`}>
+              <BarChart2 size={20} aria-hidden="true" />
             </button>
-
-            {activeTab === 'toWatch' && (
-              <button onClick={handleCheckForUpdates} disabled={isCheckingUpdates} className="bg-gray-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-600 disabled:opacity-50 text-sm">
-                <RefreshCw size={14} className={isCheckingUpdates ? 'animate-spin' : ''} />
+            {isToWatch && (
+              <button
+                type="button"
+                onClick={handleCheckForUpdates}
+                disabled={isCheckingUpdates}
+                aria-label="Check watched shows for new episodes"
+                title="Check for new episodes"
+                className={`${iconButton} bg-gray-700 hover:bg-gray-600 disabled:opacity-50`}
+              >
+                <RefreshCw size={20} aria-hidden="true" className={isCheckingUpdates ? 'animate-spin' : ''} />
               </button>
-            )}
-            {activeTab === 'toWatch' && (
-              <button onClick={() => setShowAddModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700"><Plus size={16} /> Add</button>
             )}
           </div>
         </div>
 
-        {sortedItems.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">List is empty.</p>
+        {listStatus === 'loading' ? (
+          <div role="status" aria-label="Loading" className="space-y-3">
+            {[0, 1, 2].map((i) => <div key={i} className="h-40 bg-gray-800 rounded-lg animate-pulse" />)}
+          </div>
+        ) : listStatus === 'error' ? (
+          <p className="text-center text-red-200 py-8">Couldn't load your list. It will retry when the connection is back.</p>
+        ) : sortedItems.length === 0 ? (
+          <p className="text-center text-gray-300 py-8">
+            {isToWatch ? 'Nothing to watch yet. Tap Add to find something.' : 'Nothing watched yet.'}
+          </p>
+        ) : isToWatch ? (
+          sortedItems.map((item) => (
+            <ToWatchCard
+              key={item.id}
+              item={item}
+              currentUser={currentUser}
+              settings={appSettings}
+              highlighted={highlightId === item.id}
+              onDelete={(i) => handleDelete('toWatch', i)}
+              onMarkWatched={handleMarkWatched}
+              onSetPriority={handleSetPriority}
+              watchedEpisodes={watched.find((w) => sameTitle(w, item))?.episodes}
+              onPlayTrailer={handlePlayTrailer}
+            />
+          ))
         ) : (
-          activeTab === 'toWatch' ? (
-            sortedItems.map(item => {
-              const watchedEntry = watched.find(w => w.tmdbId === item.tmdbId);
-              return (
-                <ToWatchCard 
-                  key={item.id} 
-                  item={item} 
-                  currentUser={currentUser}
-                  settings={appSettings}
-                  isEditing={editingToWatchId === item.id}
-                  onToggleEdit={() => setEditingToWatchId(editingToWatchId === item.id ? null : item.id)}
-                  onDelete={handleDeleteItem}
-                  onMarkWatched={handleMarkWatched}
-                  onSave={handleSaveToWatch}
-                  watchedEpisodes={watchedEntry?.episodes}
-                  onPlayTrailer={handlePlayTrailer}
-                />
-              );
-            })
-          ) : (
-            sortedItems.map(item => (
-              <WatchedCard 
-                key={item.id} 
-                item={item} 
-                currentUser={currentUser}
-                settings={appSettings}
-                isEditing={editingWatchedId === item.id}
-                onToggleEdit={() => setEditingWatchedId(editingWatchedId === item.id ? null : item.id)}
-                onDelete={handleDeleteWatched}
-                expandedShow={expandedShow}
-                setExpandedShow={setExpandedShow}
-                onSave={handleSaveWatched}
-              />
-            ))
-          )
+          sortedItems.map((item) => (
+            <WatchedCard
+              key={item.id}
+              item={item}
+              currentUser={currentUser}
+              settings={appSettings}
+              isExpanded={expandedShow === item.id}
+              onToggleExpanded={() => setExpandedShow(expandedShow === item.id ? null : item.id)}
+              onDelete={(i) => handleDelete('watched', i)}
+              onSetRating={handleSetRating}
+              onSetEpisodeRating={handleSetEpisodeRating}
+            />
+          ))
         )}
-      </div>
+        </div>
+      </main>
 
-      {showAddModal && <AddModal onClose={() => setShowAddModal(false)} onAdd={handleAddItem} />}
-      
-      {showRatingModal && <RatingModal 
-        item={itemToRate} 
-        currentUser={currentUser} 
-        settings={appSettings}
-        watchedHistory={watched}
-        onClose={() => setShowRatingModal(false)} 
-        onSubmit={handleSubmitRating} 
-      />}
+      {isToWatch && (
+        <button
+          type="button"
+          onClick={() => setModal('add')}
+          className="fixed bottom-5 right-5 z-40 bg-blue-600 text-white pl-4 pr-5 min-h-14 rounded-full shadow-xl flex items-center gap-2 font-semibold hover:bg-blue-700"
+        >
+          <Plus size={22} aria-hidden="true" /> Add
+        </button>
+      )}
 
-      {currentTrailer && <TrailerModal videoKey={currentTrailer} onClose={() => setCurrentTrailer(null)} />}
-      
-      {showStatsModal && <StatsModal watched={watched} settings={appSettings} onClose={() => setShowStatsModal(false)} />}
-
-      {showSettingsModal && <SettingsModal currentSettings={appSettings} onClose={() => setShowSettingsModal(false)} onSave={handleSaveSettings} />}
+      {modal === 'add' && <AddModal onClose={closeModal} onAdd={handleAddItem} />}
+      {modal === 'rate' && itemToRate && (
+        <RatingModal
+          item={itemToRate}
+          currentUser={currentUser}
+          settings={appSettings}
+          watchedHistory={watched}
+          onClose={closeModal}
+          onSubmit={handleSubmitRating}
+        />
+      )}
+      {modal === 'trailer' && trailer && <TrailerModal videoKey={trailer.key} title={trailer.title} onClose={closeModal} />}
+      {modal === 'stats' && <StatsModal watched={watched} settings={appSettings} onClose={closeModal} />}
+      {modal === 'settings' && <SettingsModal currentSettings={appSettings} onClose={closeModal} onSave={handleSaveSettings} />}
     </div>
   );
 };
