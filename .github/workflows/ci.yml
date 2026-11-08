@@ -18,15 +18,11 @@ jobs:
             package-lock.json
             server/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
       - run: npm ci
         working-directory: server
       - run: npm audit --omit=dev
         working-directory: server
-      - name: Server starts
+      - run: npm test
         working-directory: server
-        run: |
-          DB_PATH=/tmp/ci.sqlite PORT=4000 node index.js & pid=$!
-          for i in $(seq 1 20); do curl -sf localhost:4000/api/items/toWatch && break; sleep 0.5; done
-          curl -sf localhost:4000/api/items/toWatch
-          kill $pid

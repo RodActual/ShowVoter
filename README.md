@@ -83,7 +83,18 @@ Set `APP_PASSWORD` in `server/.env` before exposing the server to the internet. 
 Leaving `APP_PASSWORD` blank disables sign-in; only do that if the server is reachable from your home network alone. Serve it over HTTPS (for example behind Caddy) so the password and cookie aren't sent in clear text.
 
 Data & Backups
-All shared list data lives in `server/data.sqlite`. Back it up like any file — there's no external database to manage.
+All shared list data lives in `server/data.sqlite`. Make a consistent copy any time, even while the server runs:
+```
+npm --prefix server run backup                   # writes server/backups/data-<timestamp>.sqlite
+npm --prefix server run backup -- /mnt/usb/wt.sqlite
+```
+Schedule it (cron, Task Scheduler) and keep copies off the machine. To restore, stop the server and copy a backup over `server/data.sqlite`. Deleting a title in the app can be undone for a few seconds from the toast.
+
+Checks
+```
+npm run lint      # ESLint for src/ and server/
+npm test          # server API tests (starts the real server on a random port)
+```
 
 Project Structure
 ```
