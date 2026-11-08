@@ -14,6 +14,9 @@ const LEGACY_DEFAULT_NAMES = { user1: 'Anthony', user2: 'Pam' };
 
 export const ratingField = (userKey) => (userKey === 'user1' ? 'anthonyRating' : 'pamRating');
 export const priorityField = (userKey) => (userKey === 'user1' ? 'anthonyPriority' : 'pamPriority');
+// "Not for me" on a To Watch title (#52).
+export const vetoField = (userKey) => (userKey === 'user1' ? 'anthonyVeto' : 'pamVeto');
+export const vetoedBy = (item) => USER_KEYS.filter((k) => item[vetoField(k)]);
 
 export const userName = (settings, userKey) => settings[`${userKey}Name`] || LEGACY_DEFAULT_NAMES[userKey];
 

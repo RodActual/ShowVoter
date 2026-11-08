@@ -1,5 +1,5 @@
 // Pure list helpers: filtering, sorting, month grouping, Tonight's pick. No React, no I/O (unit-tested).
-import { averageRating } from './users.js';
+import { averageRating, vetoedBy } from './users.js';
 import { isMovie } from './titles.js';
 
 const prioritySum = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
@@ -14,7 +14,7 @@ export function filterItems(items, { query = '', kind = 'all', services = [], ou
     if (kind === 'tv' && isMovie(item)) return false;
     if (services.length && !services.includes(item.service || 'Other')) return false;
     if (ours && ourServices.length && !ourServices.includes(item.service)) return false;
-    if (q && !`${item.title} ${item.service || ''}`.toLowerCase().includes(q)) return false;
+    if (q && !`${item.title} ${item.service || ''} ${item.notes || ''}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
@@ -63,7 +63,9 @@ export function groupByMonth(items, locale = 'en-US') {
 }
 
 // Candidates for Tonight's pick: titles you both rated Med or High, best first; else the whole list.
-export function pickPool(items) {
+// Titles either of you marked "not for me" are never picked.
+export function pickPool(allItems) {
+  const items = allItems.filter((i) => vetoedBy(i).length === 0);
   const shared = items.filter((i) => (i.anthonyPriority || 0) >= 2 && (i.pamPriority || 0) >= 2);
   return { pool: sortItems(shared.length ? shared : items, 'priority'), shared: shared.length > 0 };
 }

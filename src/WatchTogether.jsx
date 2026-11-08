@@ -8,6 +8,7 @@ import TabBar from './components/layout/TabBar';
 import FilterBar from './components/lists/FilterBar';
 import SwipeRow from './components/lists/SwipeRow';
 import TitleRow from './components/lists/TitleRow';
+import ComingSoon from './components/lists/ComingSoon';
 import TonightsPick from './components/lists/TonightsPick';
 import TitleSheet from './components/sheets/TitleSheet';
 import StatsView from './components/views/StatsView';
@@ -19,8 +20,9 @@ import TrailerModal from './components/modals/TrailerModal';
 import SettingsModal from './components/modals/SettingsModal';
 import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
-import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName, vetoField } from './users';
 import { isMovie, lastWatchedEpisode, localDateString, mediaTypeOf, sameTitle } from './titles';
+import useUpcoming from './useUpcoming';
 import { isCaughtUp, mergeEpisode, removeEpisode, resolveNextEpisode } from './progress';
 import { getSeasonFor } from './useNextEpisode';
 import { matchProviders } from './streaming';
@@ -335,6 +337,12 @@ const WatchTogether = () => {
   const handleSetPriority = (item, value) =>
     attempt(() => api.setDoc('toWatch', item.id, { [priorityField(currentUser)]: value }), "Couldn't save your priority.");
 
+  const handleSetVeto = (item, value) =>
+    attempt(() => api.setDoc('toWatch', item.id, { [vetoField(currentUser)]: value }), "Couldn't save that.");
+
+  const handleSetNotes = (collection, item, notes) =>
+    attempt(() => api.setDoc(collection, item.id, { notes: notes.slice(0, 500) }), "Couldn't save the note.");
+
   const handleSetRating = (item, value) =>
     attempt(() => api.setDoc('watched', item.id, { [ratingField(currentUser)]: value }), "Couldn't save your rating.");
 
@@ -440,6 +448,7 @@ const WatchTogether = () => {
 
   // Tonight's pick: keep the current pick while it's still a candidate, else the best one.
   const { pool: tonightPool, shared: tonightShared } = useMemo(() => pickPool(toWatch), [toWatch]);
+  const upcoming = useUpcoming(toWatch, watched);
   const tonight = tonightPool.find((i) => i.id === tonightId) || tonightPool[0] || null;
 
   const isListed = useCallback((t) => toWatch.some((x) => sameTitle(x, t)) || watched.some((x) => sameTitle(x, t)), [toWatch, watched]);
@@ -551,6 +560,10 @@ const WatchTogether = () => {
               />
             )}
 
+            {isToWatch && !filtering && listStatus === 'ready' && (
+              <ComingSoon items={upcoming} onOpen={(u) => setSheet({ id: u.item.id, mode: u.mode })} />
+            )}
+
             {list.length > 0 && (
               <FilterBar
                 filters={tabFilters}
@@ -635,6 +648,8 @@ const WatchTogether = () => {
           onSetEpisodeRating={sheet.mode === 'toWatch' ? handleRateEpisode : handleSetEpisodeRating}
           onLogEpisode={handleLogEpisode}
           onUnlogEpisode={handleUnlogEpisode}
+          onSetVeto={sheet.mode === 'toWatch' ? handleSetVeto : undefined}
+          onSetNotes={(i, text) => handleSetNotes(sheet.mode, i, text)}
           onLogNextEpisode={handleLogNextEpisode}
           onDelete={(i) => handleDelete(sheet.mode, i)}
           onPlayTrailer={handlePlayTrailer}
