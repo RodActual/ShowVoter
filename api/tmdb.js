@@ -1,5 +1,6 @@
-// Vercel function: GET /api/tmdb/<tmdb path>?<params>. Needs TMDB_API_KEY in the Vercel project.
-import { handleTmdbRequest } from '../../lib/tmdbProxy.js';
+// Vercel function. vercel.json rewrites /api/tmdb/<tmdb path>?<params> to /api/tmdb?tmdbPath=<tmdb path>&<params>.
+// Needs TMDB_API_KEY in the Vercel project.
+import { handleTmdbRequest } from '../lib/tmdbProxy.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {

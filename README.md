@@ -24,7 +24,7 @@ Architecture
  * Hosting: Vercel builds and serves the Vite frontend from `main` (production) and every branch (previews).
  * Data: Firestore at `couples/{VITE_COUPLE_ID}/{toWatch|watched|settings}`, with live updates and an offline cache (`src/services/api.js`).
  * Sign-in: one shared Firebase Auth account (Email/Password). The app shows a password screen; Firestore rules (`firestore.rules`) only allow that account.
- * TMDB: the Vercel function `api/tmdb/[...path].js` holds `TMDB_API_KEY` and only answers requests with that account's Firebase ID token (`lib/tmdbProxy.js`).
+ * TMDB: the Vercel function `api/tmdb.js` holds `TMDB_API_KEY` and only answers requests with that account's Firebase ID token (`lib/tmdbProxy.js`).
  * Users: two fixed ids (`user1`, `user2`). Names and colors are set in Settings and shared by both phones; "Who's watching?" picks your profile on each device.
 
 Setup (one time)
@@ -58,7 +58,7 @@ Settings → Export data downloads both lists and settings as JSON. Firestore's 
 
 Project Structure
 ```
-api/tmdb/[...path].js   # Vercel function: TMDB proxy
+api/tmdb.js             # Vercel function: TMDB proxy (vercel.json rewrites /api/tmdb/*)
 lib/tmdbProxy.js        # Proxy + Firebase token check (unit-tested)
 firestore.rules         # Firestore security rules
 vercel.json             # Build output and security headers (CSP)
