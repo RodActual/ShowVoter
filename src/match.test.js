@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { applyVote, buildQueue, seedTitles, voteKey } from './match.js';
+import { applyVote, buildQueue, voteKey } from './match.js';
 
 const t = (id, mediaType = 'movie', extra = {}) => ({ tmdbId: id, mediaType, title: `T${id}`, ...extra });
 
@@ -27,15 +27,4 @@ test('a Yes on a partner Yes is a match, once', () => {
   assert.strictEqual(applyVote({ user2: 'yes', matchedAt: 'old' }, 'user1', 'yes').match, false);
   assert.strictEqual(applyVote({ user2: 'yes' }, 'user1', 'no').match, false);
   assert.strictEqual(applyVote({ user2: 'no' }, 'user1', 'yes').match, false);
-});
-
-test('seed titles prefer ones you both loved', () => {
-  const watched = [
-    t(1, 'tv', { anthonyRating: 9, pamRating: 9 }),
-    t(2, 'tv', { anthonyRating: 10, pamRating: 6 }),
-    t(3, 'movie', { anthonyRating: 8, pamRating: 8 }),
-    t(4, 'movie', { anthonyRating: 10, pamRating: 10, status: 'DNF' })
-  ];
-  assert.deepStrictEqual(seedTitles(watched).map((w) => w.tmdbId), [1, 3]);
-  assert.deepStrictEqual(seedTitles([t(2, 'tv', { anthonyRating: 5 })]).map((w) => w.tmdbId), [2]);
 });

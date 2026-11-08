@@ -36,13 +36,3 @@ export function applyVote(existing, me, value, now = new Date().toISOString()) {
   const match = value === 'yes' && existing?.[partner] === 'yes' && !existing?.matchedAt;
   return { update: { [me]: value, updatedAt: now, ...(match ? { matchedAt: now } : {}) }, match };
 }
-
-// Titles both rated 8+ (or the best-rated if none), used to seed "more like this" suggestions.
-export function seedTitles(watched, limit = 3) {
-  const rated = watched.filter((w) => w.tmdbId && w.status !== 'DNF');
-  const loved = rated.filter((w) => (w.anthonyRating || 0) >= 8 && (w.pamRating || 0) >= 8);
-  const pool = loved.length ? loved : rated;
-  return [...pool]
-    .sort((a, b) => ((b.anthonyRating || 0) + (b.pamRating || 0)) - ((a.anthonyRating || 0) + (a.pamRating || 0)))
-    .slice(0, limit);
-}

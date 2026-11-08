@@ -2,46 +2,25 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Heart, X, Play, Star, RefreshCw, Sparkles, Undo2 } from 'lucide-react';
 import tmdbService from '../../services/tmdbService';
 import { userName } from '../../users';
-import { buildQueue, seedTitles } from '../../match';
+import { buildQueue } from '../../match';
+import { becauseText } from '../../recommend';
+import useForYou from '../../useForYou';
 
 const THRESHOLD = 110;
 
-// Loads suggestions: TMDB trending plus "more like" the titles you both loved.
-function useCandidates(watched) {
+// Loads TMDB trending, a page at a time (personal picks come from useForYou).
+function useTrending() {
   const [candidates, setCandidates] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [page, setPage] = useState(1);
   const [attempt, setAttempt] = useState(0);
-  const seededRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const trending = await tmdbService.trending(page);
-        let recs = [];
-        if (!seededRef.current) {
-          seededRef.current = true;
-          const seeds = seedTitles(watched);
-          const lists = await Promise.all(seeds.map((s) => tmdbService.recommendations(s.tmdbId, s.mediaType).catch(() => [])));
-          recs = lists.flat();
-        }
-        if (cancelled) return;
-        // Interleave so "more like" picks show up early instead of after all of trending.
-        const mixed = [];
-        for (let i = 0; i < Math.max(trending.length, recs.length); i++) {
-          if (recs[i]) mixed.push(recs[i]);
-          if (trending[i]) mixed.push(trending[i]);
-        }
-        setCandidates((prev) => [...prev, ...mixed]);
-        setStatus('ready');
-      } catch {
-        if (!cancelled) setStatus('error');
-      }
-    })();
+    tmdbService.trending(page)
+      .then((list) => { if (!cancelled) { setCandidates((prev) => [...prev, ...list]); setStatus('ready'); } })
+      .catch(() => { if (!cancelled) setStatus('error'); });
     return () => { cancelled = true; };
-    // Seeds are read once on first load; later pages only add trending.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, attempt]);
 
   return {
@@ -51,6 +30,40 @@ function useCandidates(watched) {
     retry: () => { setStatus('loading'); setAttempt((a) => a + 1); }
   };
 }
+
+// "For you" list: ranked recommendations with the reason; tap to preview and add.
+const ForYouList = ({ items, status, onPreview }) => {
+  if (status === 'loading') {
+    return (
+      <ul role="status" aria-label="Loading recommendations" className="space-y-2">
+        {[0, 1, 2, 3].map((i) => <li key={i} className="h-[88px] rounded-xl bg-gray-800 animate-pulse" />)}
+      </ul>
+    );
+  }
+  if (status === 'empty') return <p className="text-gray-200 py-8 text-center">Rate a few shows 7+ or set priorities on To Watch, and recommendations show up here.</p>;
+  if (status === 'error') return <p className="text-red-200 py-8 text-center">Couldn't load recommendations.</p>;
+  if (items.length === 0) return <p className="text-gray-200 py-8 text-center">Nothing new to suggest right now.</p>;
+  return (
+    <ul className="grid gap-2 md:grid-cols-2">
+      {items.slice(0, 40).map((r) => (
+        <li key={r.key}>
+          <button
+            type="button"
+            onClick={() => onPreview(r, becauseText(r.because))}
+            className="w-full text-left flex items-center gap-3 p-1.5 pr-3 rounded-xl bg-gray-800 border border-gray-700 hover:bg-gray-700"
+          >
+            <img src={r.posterPath} alt="" loading="lazy" className="w-10 h-[60px] object-cover rounded-md shrink-0 bg-gray-700" />
+            <span className="flex-1 min-w-0">
+              <span className="font-semibold text-white leading-snug line-clamp-1">{r.title}</span>
+              <span className="block text-xs text-gray-200 truncate">{[r.type, r.year].filter(Boolean).join(' · ')}</span>
+              <span className="block text-xs text-purple-100 truncate">{becauseText(r.because)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+};
 
 const MatchCard = ({ card, partnerName, onVote, onTrailer }) => {
   const [dx, setDx] = useState(0);
@@ -133,6 +146,7 @@ const MatchCard = ({ card, partnerName, onVote, onTrailer }) => {
             </span>
           )}
         </p>
+        {card.because?.length ? <p className="text-xs text-purple-100 mt-1 truncate">{becauseText(card.because)}</p> : null}
         {card.overview && <p className="text-sm text-gray-100 mt-1 line-clamp-2">{card.overview}</p>}
       </div>
     </article>
@@ -140,8 +154,14 @@ const MatchCard = ({ card, partnerName, onVote, onTrailer }) => {
 };
 
 // Match tab: each person votes on their own phone; titles you both say Yes to land on To Watch.
-const MatchView = ({ currentUser, settings, votes, toWatch, watched, onVote, onUndo, onTrailer }) => {
-  const { candidates, status, loadMore, retry } = useCandidates(watched);
+const MatchView = ({ currentUser, settings, votes, toWatch, watched, onVote, onUndo, onTrailer, onPreview }) => {
+  const [view, setView] = useState('swipe'); // swipe | forYou
+  const forYou = useForYou({ toWatch, watched, votes });
+  const trending = useTrending();
+  const status = trending.status === 'ready' || forYou.status === 'ready' ? 'ready' : trending.status;
+  const { loadMore, retry } = trending;
+  // Personal picks first, then trending.
+  const candidates = useMemo(() => [...forYou.items, ...trending.candidates], [forYou.items, trending.candidates]);
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState(null); // last non-match vote, for Undo
   const partner = currentUser === 'user1' ? 'user2' : 'user1';
@@ -171,8 +191,36 @@ const MatchView = ({ currentUser, settings, votes, toWatch, watched, onVote, onU
 
   const bigButton = 'w-16 h-16 rounded-full flex items-center justify-center shadow-xl disabled:opacity-50';
 
+  const tabButton = (key, label) => (
+    <button
+      type="button"
+      aria-pressed={view === key}
+      onClick={() => setView(key)}
+      className={`flex-1 min-h-11 rounded-lg text-sm font-semibold ${view === key ? 'bg-gray-700 text-white' : 'text-gray-200'}`}
+    >
+      {label}
+    </button>
+  );
+
+  if (view === 'forYou') {
+    return (
+      <section aria-labelledby="foryou-heading" className="max-w-3xl mx-auto">
+        <div role="group" aria-label="Match view" className="flex gap-1 p-1 mb-3 rounded-xl bg-gray-800 max-w-md mx-auto">
+          {tabButton('swipe', 'Swipe')}
+          {tabButton('forYou', 'For you')}
+        </div>
+        <h2 id="foryou-heading" className="text-sm text-gray-200 mb-3">Picked from what you both loved and what you're planning to watch.</h2>
+        <ForYouList items={forYou.items} status={forYou.status} onPreview={onPreview} />
+      </section>
+    );
+  }
+
   return (
     <section aria-labelledby="match-heading" className="max-w-md mx-auto">
+      <div role="group" aria-label="Match view" className="flex gap-1 p-1 mb-3 rounded-xl bg-gray-800">
+        {tabButton('swipe', 'Swipe')}
+        {tabButton('forYou', 'For you')}
+      </div>
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <h2 id="match-heading" className="text-sm text-gray-200">
           Both say yes and it goes to To Watch.
