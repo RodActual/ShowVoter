@@ -6,7 +6,7 @@ import { lastWatchedEpisode, localDateString, parseLocalDate } from '../../title
 
 const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-const EpisodeRow = ({ ep, logged, today, ratingProps, onLog }) => {
+const EpisodeRow = ({ ep, logged, today, ratingProps, onLog, onUnlog }) => {
   const [open, setOpen] = useState(false);
   const aired = ep.airDate && ep.airDate <= today;
   const long = (ep.overview || '').length > 140;
@@ -19,14 +19,29 @@ const EpisodeRow = ({ ep, logged, today, ratingProps, onLog }) => {
           </p>
           <p className="text-xs text-gray-200 mt-0.5 flex items-center gap-2 flex-wrap">
             {ep.airDate ? (aired ? formatDate(ep.airDate) : `Airs ${formatDate(ep.airDate)}`) : 'Air date not announced'}
-            {logged && (
+            {logged && !onUnlog && (
               <span className="inline-flex items-center gap-1 text-green-300 font-semibold">
                 <CheckCircle2 size={14} aria-hidden="true" /> Watched
               </span>
             )}
           </p>
         </div>
-        {logged && ratingProps && <RatingSelect {...ratingProps} />}
+        {logged && (ratingProps || onUnlog) && (
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            {ratingProps && <RatingSelect {...ratingProps} />}
+            {onUnlog && (
+              <button
+                type="button"
+                aria-pressed="true"
+                onClick={() => onUnlog(logged)}
+                aria-label={`Episode ${ep.num}, ${ep.title}, is watched. Tap to unmark`}
+                className="min-h-11 px-3 rounded-lg border border-green-400 text-green-200 hover:bg-gray-600 text-sm font-semibold inline-flex items-center gap-1"
+              >
+                <CheckCircle2 size={16} aria-hidden="true" /> Watched
+              </button>
+            )}
+          </div>
+        )}
         {!logged && aired && onLog && (
           <button
             type="button"
@@ -59,9 +74,9 @@ const EpisodeRow = ({ ep, logged, today, ratingProps, onLog }) => {
   );
 };
 
-// Read-only browser of a show's seasons and episodes, with overviews. Logged episodes are marked;
-// on Watched shows your episode rating can be changed inline. Never marks anything watched.
-const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatingField, partnerName, onRateEpisode, onLogEpisode }) => {
+// Browser of a show's seasons and episodes, with overviews. Logged episodes are marked;
+// your episode rating can be changed inline. Tapping Watched on a logged episode unmarks it.
+const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatingField, partnerName, onRateEpisode, onLogEpisode, onUnlogEpisode }) => {
   const [seasonCount, setSeasonCount] = useState(null);
   const [season, setSeason] = useState(() => lastWatchedEpisode(loggedEpisodes)?.season || 1);
   const [episodes, setEpisodes] = useState(null); // null = loading
@@ -142,6 +157,7 @@ const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatin
                   logged={logged}
                   today={today}
                   onLog={onLogEpisode ? (e) => onLogEpisode({ season, num: e.num, title: e.title }) : undefined}
+                  onUnlog={onUnlogEpisode ? (l) => onUnlogEpisode({ ...l, season: l.season || season }) : undefined}
                   ratingProps={logged && onRateEpisode ? {
                     label: `Your rating for season ${season} episode ${ep.num}${logged[partnerRatingField] ? ` (${partnerName}: ${logged[partnerRatingField]}/10)` : ''}`,
                     value: logged[myRatingField] || 0,

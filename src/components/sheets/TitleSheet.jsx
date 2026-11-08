@@ -31,6 +31,7 @@ const TitleSheet = ({
   onSetRating,
   onSetEpisodeRating,
   onLogEpisode,
+  onUnlogEpisode,
   onLogNextEpisode,
   onDelete,
   onPlayTrailer,
@@ -184,6 +185,7 @@ const TitleSheet = ({
             partnerName={userName(settings, partner)}
             onRateEpisode={!isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
             onLogEpisode={!isDNF && onLogEpisode ? (ep) => onLogEpisode(item, ep) : undefined}
+            onUnlogEpisode={onUnlogEpisode ? (ep) => onUnlogEpisode(item, ep) : undefined}
           />
         </Section>
       )}
