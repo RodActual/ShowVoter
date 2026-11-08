@@ -17,6 +17,7 @@ import RatingModal from './components/modals/RatingModal';
 import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import SettingsModal from './components/modals/SettingsModal';
+import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
 import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
 import { isMovie, lastWatchedEpisode, mediaTypeOf, sameTitle } from './titles';
@@ -79,6 +80,7 @@ const WatchTogether = () => {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [itemToRate, setItemToRate] = useState(null);
   const [trailer, setTrailer] = useState(null);
+  const [preview, setPreview] = useState(null); // { title, because } for a title not on your lists
 
   const { items: toWatch, status: toWatchStatus } = useLiveCollection('toWatch', Boolean(currentUser));
   const { items: watched, status: watchedStatus } = useLiveCollection('watched', Boolean(currentUser));
@@ -344,6 +346,13 @@ const WatchTogether = () => {
   const { pool: tonightPool, shared: tonightShared } = useMemo(() => pickPool(toWatch), [toWatch]);
   const tonight = tonightPool.find((i) => i.id === tonightId) || tonightPool[0] || null;
 
+  const isListed = useCallback((t) => toWatch.some((x) => sameTitle(x, t)) || watched.some((x) => sameTitle(x, t)), [toWatch, watched]);
+  const openPreview = useCallback((title, because) => setPreview({ title, because }), []);
+  const handleAddFromPreview = async (title, service) => {
+    await handleAddItem(title, service);
+    setPreview(null);
+  };
+
   const watchedFor = useCallback((item) => watched.find((w) => sameTitle(w, item))?.episodes, [watched]);
 
   if (showUserSelect || !currentUser) return <UserSelectModal settings={appSettings} onSelectUser={handleUserSelect} />;
@@ -430,6 +439,7 @@ const WatchTogether = () => {
             onVote={handleVote}
             onUndo={handleUndoVote}
             onTrailer={handlePlayTrailer}
+            onPreview={openPreview}
           />
         ) : (
           <>
@@ -527,6 +537,18 @@ const WatchTogether = () => {
           onSetEpisodeRating={handleSetEpisodeRating}
           onDelete={(i) => handleDelete(sheet.mode, i)}
           onPlayTrailer={handlePlayTrailer}
+          isListed={isListed}
+          onPreview={(t) => openPreview(t)}
+        />
+      )}
+      {preview && (
+        <TitlePreview
+          title={preview.title}
+          because={preview.because}
+          listed={isListed(preview.title)}
+          onClose={() => setPreview(null)}
+          onAdd={handleAddFromPreview}
+          onTrailer={handlePlayTrailer}
         />
       )}
       {modal === 'add' && <AddModal onClose={closeModal} onAdd={handleAddItem} />}

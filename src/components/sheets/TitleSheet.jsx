@@ -5,6 +5,7 @@ import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import tmdbService from '../../services/tmdbService';
 import EpisodeBrowser from './EpisodeBrowser';
+import MoreLikeThis from './MoreLikeThis';
 import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
 import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
 
@@ -50,7 +51,9 @@ const TitleSheet = ({
   onSetRating,
   onSetEpisodeRating,
   onDelete,
-  onPlayTrailer
+  onPlayTrailer,
+  isListed,
+  onPreview
 }) => {
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
@@ -184,6 +187,12 @@ const TitleSheet = ({
             partnerName={userName(settings, partner)}
             onRateEpisode={mode === 'watched' && !isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
           />
+        </Section>
+      )}
+
+      {item.tmdbId && (
+        <Section title="More like this">
+          <MoreLikeThis item={item} isListed={isListed} onPreview={onPreview} />
         </Section>
       )}
 
