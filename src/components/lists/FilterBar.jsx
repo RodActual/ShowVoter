@@ -40,13 +40,13 @@ const FilterBar = ({ filters, onChange, services, sort, sortOptions, onSortChang
           id="list-sort"
           value={sort}
           onChange={(e) => onSortChange(e.target.value)}
-          className="bg-gray-800 text-white border border-gray-600 rounded-xl px-2 min-h-11 text-sm"
+          className="bg-gray-800 text-white border border-gray-600 rounded-xl px-2 min-h-11"
         >
           {sortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
       </div>
 
-      <div role="group" aria-label="Filters" className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 [scrollbar-width:none]">
+      <div role="group" aria-label="Filters" className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
         {[['all', 'All'], ['movie', 'Movies'], ['tv', 'TV']].map(([value, label]) => (
           <button key={value} type="button" aria-pressed={filters.kind === value} onClick={() => set({ kind: value })} className={chip(filters.kind === value)}>
             {label}

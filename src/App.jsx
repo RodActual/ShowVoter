@@ -13,7 +13,7 @@ function App() {
   useEffect(() => api.onSessionChange((signedIn) => setState(signedIn ? 'ready' : 'login')), []);
 
   if (state === 'loading') {
-    return <main className="min-h-screen bg-gray-900 text-white flex items-center justify-center" role="status">Loading…</main>;
+    return <main className="min-h-[100dvh] bg-gray-900 text-white flex items-center justify-center" role="status">Loading…</main>;
   }
   if (state === 'login') return <LoginScreen />;
 

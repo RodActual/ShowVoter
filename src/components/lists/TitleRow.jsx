@@ -70,7 +70,7 @@ const TitleRow = ({ item, mode, currentUser, settings, watchedEpisodes, highligh
         ? <img src={item.posterPath} alt="" loading="lazy" className={`w-10 h-[60px] object-cover rounded-md shrink-0 bg-gray-700 ${isDNF ? 'grayscale' : ''}`} />
         : <div aria-hidden="true" className="w-10 h-[60px] rounded-md shrink-0 bg-gray-700" />}
       <span className="flex-1 min-w-0">
-        <span className="block font-semibold text-white leading-snug line-clamp-1">{item.title}</span>
+        <span className="font-semibold text-white leading-snug line-clamp-1">{item.title}</span>
         <span className="block text-xs text-gray-200 mt-0.5 truncate">{metaLine(item, mode, watchedEpisodes)}</span>
         {item.isNewEpisodes && (
           <span className="inline-block mt-1 text-[11px] font-bold bg-green-700 text-white px-1.5 py-0.5 rounded">New episodes</span>

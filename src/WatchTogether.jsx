@@ -336,9 +336,9 @@ const WatchTogether = () => {
   );
 
   return (
-    <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen">
-      <header className="sticky top-0 z-30 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-4 pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center justify-between gap-2 min-h-14">
+    <div className="bg-gray-900 min-h-[100dvh]">
+      <header className="sticky top-0 z-30 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-safe pt-[env(safe-area-inset-top)]">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 min-h-14">
           <h1 className="text-lg font-bold text-white">
             {activeTab === 'toWatch' ? 'To Watch' : activeTab === 'watched' ? 'Watched' : 'Stats'}
             {isList && <span className="ml-2 text-sm font-normal text-gray-300">{list.length}</span>}
@@ -372,7 +372,7 @@ const WatchTogether = () => {
         </div>
       </header>
 
-      <main className="px-4 pt-3 pb-44">
+      <main className="px-safe pt-3 pb-44 max-w-5xl mx-auto">
         {activeTab === 'stats' ? (
           <StatsView watched={watched} toWatchCount={toWatch.length} settings={appSettings} />
         ) : (
@@ -401,7 +401,7 @@ const WatchTogether = () => {
             )}
 
             {listStatus === 'loading' ? (
-              <ul role="status" aria-label="Loading" className="space-y-2">
+              <ul role="status" aria-label="Loading" className="grid gap-2 md:grid-cols-2">
                 {[0, 1, 2, 3, 4].map((i) => <li key={i} className="h-[88px] bg-gray-800 rounded-xl animate-pulse" />)}
               </ul>
             ) : listStatus === 'error' ? (
@@ -427,7 +427,7 @@ const WatchTogether = () => {
                 {groups.map((g) => (
                   <section key={g.key} aria-label={g.label || undefined} className="mb-4">
                     {g.label && <h2 className="text-xs font-bold uppercase tracking-wider text-gray-200 mb-2 mt-1">{g.label}</h2>}
-                    <ul className="space-y-2">{g.items.map(renderRow)}</ul>
+                    <ul className="grid gap-2 md:grid-cols-2">{g.items.map(renderRow)}</ul>
                   </section>
                 ))}
                 <p className="text-center text-xs text-gray-300 mt-2">
@@ -445,7 +445,7 @@ const WatchTogether = () => {
           onClick={() => setModal('add')}
           aria-label="Add a title"
           title="Add a title"
-          className="fixed right-4 z-40 bottom-[calc(5rem+env(safe-area-inset-bottom))] bg-blue-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-blue-700"
+          className="fixed right-[max(1rem,env(safe-area-inset-right))] z-40 bottom-[calc(5rem+env(safe-area-inset-bottom))] bg-blue-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-blue-700"
         >
           <Plus size={26} aria-hidden="true" />
         </button>
