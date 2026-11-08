@@ -1,95 +1,39 @@
 // src/services/api.js
-// Thin client for the self-hosted Express/SQLite server (see /server).
+// Data access on Firestore: couples/{COUPLE_ID}/{collection}/{id}. Same shape the app used before.
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { collection, deleteDoc, doc, getDocs, onSnapshot, setDoc } from 'firebase/firestore';
+import { auth, db, COUPLE_ID, LOGIN_EMAIL } from './firebase';
 
-// Sign-in uses an HttpOnly session cookie set by POST /api/login, so no secret
-// ever ships in the JS bundle. Any 401 fires 'wt:unauthorized' to show the login screen.
-export const UNAUTHORIZED_EVENT = 'wt:unauthorized';
-
-async function request(path, options = {}) {
-  const res = await fetch(`/api${path}`, {
-    ...options,
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
-  });
-  if (res.status === 401 && !path.startsWith('/login')) {
-    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`API request failed (${res.status}): ${body}`);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
-// --- One shared WebSocket for all live updates -----------------------------
-// Each subscriber gets onPut/onDelete for its collection and onSync after every
-// (re)connect, so changes missed while offline are fetched again.
-const subscribers = new Set();
-let socket = null;
-let retryDelay = 1000;
-let retryTimer = null;
-
-function connect() {
-  clearTimeout(retryTimer);
-  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  socket = new WebSocket(`${protocol}://${location.host}/ws`);
-
-  socket.onopen = () => {
-    retryDelay = 1000;
-    subscribers.forEach((s) => s.onSync?.());
-  };
-  socket.onmessage = (event) => {
-    let msg;
-    try { msg = JSON.parse(event.data); } catch { return; }
-    subscribers.forEach((s) => {
-      if (msg.collection !== s.collection) return;
-      if (msg.type === 'put') s.onPut?.(msg.data);
-      if (msg.type === 'delete') s.onDelete?.(msg.id);
-    });
-  };
-  socket.onclose = () => {
-    socket = null;
-    if (subscribers.size === 0) return;
-    retryTimer = setTimeout(connect, retryDelay);
-    retryDelay = Math.min(retryDelay * 2, 15000);
-  };
-}
-
-// Phones suspend sockets in the background; reconnect as soon as the app is visible again.
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && subscribers.size > 0 && !socket) connect();
-  });
-}
+const colRef = (name) => collection(db, 'couples', COUPLE_ID, name);
+const docRef = (name, id) => doc(db, 'couples', COUPLE_ID, name, id);
+const withId = (snap) => ({ ...snap.data(), id: snap.id });
 
 export const api = {
-  newId: () => crypto.randomUUID(),
+  newId: () => doc(colRef('toWatch')).id,
 
-  getSession: () => request('/session'),
-  login: (password) => request('/login', { method: 'POST', body: JSON.stringify({ password }) }),
-  logout: () => request('/logout', { method: 'POST' }),
+  // Calls back with true/false whenever the sign-in state changes. Returns unsubscribe.
+  onSessionChange: (callback) => onAuthStateChanged(auth, (user) => callback(Boolean(user && user.email === LOGIN_EMAIL))),
+  login: (password) => signInWithEmailAndPassword(auth, LOGIN_EMAIL, password),
+  logout: () => signOut(auth),
+  // Firebase ID token for the TMDB function; refreshed automatically by the SDK.
+  getIdToken: () => auth.currentUser?.getIdToken() ?? Promise.reject(new Error('Not signed in')),
 
-  getCollection: (collection) => request(`/items/${collection}`),
-  getDoc: (collection, id) => request(`/items/${collection}/${id}`),
-  setDoc: (collection, id, data) =>
-    request(`/items/${collection}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteDoc: (collection, id) => request(`/items/${collection}/${id}`, { method: 'DELETE' }),
+  getCollection: async (name) => (await getDocs(colRef(name))).docs.map(withId),
+  // Merge semantics, like the old app's setDoc(..., { merge: true }). An `id` field is never stored.
+  setDoc: (name, id, data) => {
+    const { id: _ignored, ...fields } = data;
+    return setDoc(docRef(name, id), fields, { merge: true });
+  },
+  deleteDoc: (name, id) => deleteDoc(docRef(name, id)),
 
-  // Live updates. onSync runs on every (re)connect: refetch there. Returns an unsubscribe function.
-  subscribe(collection, { onPut, onDelete, onSync }) {
-    const sub = { collection, onPut, onDelete, onSync };
-    subscribers.add(sub);
-    if (!socket) connect();
-    else if (socket.readyState === WebSocket.OPEN) onSync?.();
-    return () => {
-      subscribers.delete(sub);
-      if (subscribers.size === 0) {
-        clearTimeout(retryTimer);
-        socket?.close();
-        socket = null;
-      }
-    };
+  // Live list. onItems gets the full array on every change (Firestore handles reconnects and offline).
+  watchCollection(name, { onItems, onError }) {
+    return onSnapshot(colRef(name), (snap) => onItems(snap.docs.map(withId)), (err) => onError?.(err));
+  },
+
+  // Live single document; onDoc gets null when it doesn't exist.
+  watchDoc(name, id, { onDoc, onError }) {
+    return onSnapshot(docRef(name, id), (snap) => onDoc(snap.exists() ? withId(snap) : null), (err) => onError?.(err));
   }
 };
 

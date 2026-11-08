@@ -61,3 +61,7 @@ server/data.sqlite-*
 # ---- IDE / Tooling ----
 .vscode/
 .idea/
+
+# Vercel CLI and Firebase emulator logs
+.vercel
+*-debug.log

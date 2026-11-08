@@ -37,31 +37,17 @@ function readSavedUser() {
   }
 }
 
-// Keeps a collection in sync: refetches on every (re)connect, then applies live puts/deletes.
+// Live Firestore collection; Firestore handles reconnects and offline edits.
 function useLiveCollection(collection, enabled) {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | ready | error
 
   useEffect(() => {
     if (!enabled) return undefined;
-    let active = true;
-    const refetch = () => api.getCollection(collection)
-      .then((list) => { if (active) { setItems(list); setStatus('ready'); } })
-      .catch(() => { if (active) setStatus((s) => (s === 'ready' ? s : 'error')); });
-
-    const unsubscribe = api.subscribe(collection, {
-      onSync: refetch,
-      onPut: (item) => setItems((prev) => {
-        const idx = prev.findIndex((i) => i.id === item.id);
-        if (idx === -1) return [...prev, item];
-        const next = [...prev];
-        next[idx] = item;
-        return next;
-      }),
-      onDelete: (id) => setItems((prev) => prev.filter((i) => i.id !== id))
+    return api.watchCollection(collection, {
+      onItems: (list) => { setItems(list); setStatus('ready'); },
+      onError: (err) => { console.error(err); setStatus('error'); }
     });
-    refetch();
-    return () => { active = false; unsubscribe(); };
   }, [collection, enabled]);
 
   return { items, status };
@@ -109,8 +95,7 @@ const WatchTogether = () => {
       const { id, ...rest } = doc;
       setAppSettings({ ...DEFAULT_SETTINGS, ...rest });
     };
-    const load = () => api.getDoc('settings', 'app').then(applySettings).catch(() => { /* not saved yet */ });
-    return api.subscribe('settings', { onSync: load, onPut: applySettings, onDelete: () => setAppSettings(DEFAULT_SETTINGS) });
+    return api.watchDoc('settings', 'app', { onDoc: applySettings, onError: (err) => console.error(err) });
   }, []);
 
   useEffect(() => {
@@ -126,6 +111,20 @@ const WatchTogether = () => {
       toast({ message: 'Settings saved', tone: 'success' });
     }
   };
+
+  // Backup: downloads everything as JSON (Firestore's scheduled exports need the paid plan).
+  const handleExport = () => {
+    const data = { exportedAt: new Date().toISOString(), settings: appSettings, toWatch, watched };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `watch-together-${today()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ message: `Exported ${toWatch.length + watched.length} titles`, tone: 'success' });
+  };
+
+  const handleSignOut = () => attempt(() => api.logout(), "Couldn't sign out.");
 
   const handleUserSelect = (userKey) => {
     if (!USER_KEYS.includes(userKey)) return;
@@ -414,7 +413,7 @@ const WatchTogether = () => {
             {[0, 1, 2].map((i) => <div key={i} className="h-40 bg-gray-800 rounded-lg animate-pulse" />)}
           </div>
         ) : listStatus === 'error' ? (
-          <p className="text-center text-red-200 py-8">Couldn't load your list. It will retry when the connection is back.</p>
+          <p className="text-center text-red-200 py-8">Couldn't load your list. Try signing out and back in from Settings.</p>
         ) : sortedItems.length === 0 ? (
           <p className="text-center text-gray-300 py-8">
             {isToWatch ? 'Nothing to watch yet. Tap Add to find something.' : 'Nothing watched yet.'}
@@ -475,7 +474,15 @@ const WatchTogether = () => {
       )}
       {modal === 'trailer' && trailer && <TrailerModal videoKey={trailer.key} title={trailer.title} onClose={closeModal} />}
       {modal === 'stats' && <StatsModal watched={watched} settings={appSettings} onClose={closeModal} />}
-      {modal === 'settings' && <SettingsModal currentSettings={appSettings} onClose={closeModal} onSave={handleSaveSettings} />}
+      {modal === 'settings' && (
+        <SettingsModal
+          currentSettings={appSettings}
+          onClose={closeModal}
+          onSave={handleSaveSettings}
+          onExport={handleExport}
+          onSignOut={handleSignOut}
+        />
+      )}
     </div>
   );
 };

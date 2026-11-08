@@ -1,7 +1,9 @@
 // src/services/tmdbService.js
+// TMDB calls go through the Vercel function in api/tmdb, which holds the API key and
+// only answers requests carrying the signed-in user's Firebase ID token.
+import api from './api';
 
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-import { UNAUTHORIZED_EVENT } from './api';
 
 const SERVICE_MAPPING = {
   8: 'Netflix',
@@ -11,7 +13,7 @@ const SERVICE_MAPPING = {
   9: 'Prime Video',
   350: 'Apple TV+',
   531: 'Paramount+',
-  387: 'Peacock',
+  387: 'Peacock'
 };
 
 async function tmdbProxy(path, params = {}) {
@@ -20,8 +22,8 @@ async function tmdbProxy(path, params = {}) {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
   });
 
-  const res = await fetch(url, { credentials: 'same-origin' });
-  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  const token = await api.getIdToken();
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`TMDB proxy error (${res.status})`);
   return res.json();
 }

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Lock } from 'lucide-react';
 import api from '../../services/api';
 
-const LoginScreen = ({ onLoggedIn }) => {
+// Signs in to the shared Firebase account; App switches screens via onAuthStateChanged.
+const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -13,11 +14,15 @@ const LoginScreen = ({ onLoggedIn }) => {
     setError('');
     try {
       await api.login(password);
-      onLoggedIn();
     } catch (err) {
-      setError(err.message.includes('(429)') ? 'Too many attempts. Wait a minute.' : 'Wrong password.');
+      const code = err?.code || '';
+      setError(
+        code === 'auth/too-many-requests' ? 'Too many attempts. Wait a few minutes.'
+          : code === 'auth/network-request-failed' ? "Can't reach the server. Check your connection."
+            : 'Wrong password.'
+      );
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   return (

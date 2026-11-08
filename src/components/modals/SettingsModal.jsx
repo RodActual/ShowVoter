@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, RotateCcw } from 'lucide-react';
+import { Save, RotateCcw, Download, LogOut } from 'lucide-react';
 import Modal from '../common/Modal';
 import { DEFAULT_SETTINGS } from '../../users';
 
@@ -49,7 +49,7 @@ const UserFields = ({ n, settings, onChange }) => {
   );
 };
 
-const SettingsModal = ({ currentSettings, onClose, onSave }) => {
+const SettingsModal = ({ currentSettings, onClose, onSave, onExport, onSignOut }) => {
   const [settings, setSettings] = useState(currentSettings);
   const handleChange = (field, value) => setSettings((prev) => ({ ...prev, [field]: value }));
   const valid = HEX.test(settings.user1Color) && HEX.test(settings.user2Color)
@@ -85,6 +85,24 @@ const SettingsModal = ({ currentSettings, onClose, onSave }) => {
           </button>
         </div>
       </form>
+
+      <div className="mt-6 pt-4 border-t border-gray-700 grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={onExport}
+          className="min-h-11 rounded-lg bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2"
+        >
+          <Download size={18} aria-hidden="true" /> Export data
+        </button>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="min-h-11 rounded-lg bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2"
+        >
+          <LogOut size={18} aria-hidden="true" /> Sign out
+        </button>
+      </div>
+      <p className="text-xs text-gray-200 mt-2">Export saves both lists as a JSON file. Keep a copy somewhere safe now and then.</p>
     </Modal>
   );
 };
