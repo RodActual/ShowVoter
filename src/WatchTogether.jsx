@@ -21,7 +21,8 @@ import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
 import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
 import { isMovie, lastWatchedEpisode, localDateString, mediaTypeOf, sameTitle } from './titles';
-import { isCaughtUp, mergeEpisode, nextAfter, removeEpisode } from './progress';
+import { isCaughtUp, mergeEpisode, removeEpisode, resolveNextEpisode } from './progress';
+import { getSeasonFor } from './useNextEpisode';
 import { matchProviders } from './streaming';
 import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists';
 
@@ -349,23 +350,8 @@ const WatchTogether = () => {
   // The Watched entry that holds a show's logged episodes (TV shows in progress live on both lists).
   const progressEntry = (item) => watched.find((w) => w.id === item.id) || watched.find((w) => sameTitle(w, item));
 
-  // Works out the next episode to log from TMDB season lengths. Returns { season, num, title } or null.
-  const findNextEpisode = async (item) => {
-    const last = lastWatchedEpisode(progressEntry(item)?.episodes || []);
-    let target;
-    if (!last) {
-      target = { season: 1, num: 1 };
-    } else {
-      const season = await tmdbService.getSeasonDetails(item.tmdbId, last.season);
-      const nextSeason = season?.episodes && last.num >= season.episodes.length
-        ? await tmdbService.getSeasonDetails(item.tmdbId, last.season + 1)
-        : null;
-      target = nextAfter(last, season?.episodes?.length || last.num + 1, Boolean(nextSeason?.episodes?.length));
-    }
-    if (!target) return null;
-    const info = (await tmdbService.getSeasonDetails(item.tmdbId, target.season))?.episodes?.find((e) => e.num === target.num);
-    return { ...target, title: info?.title || `Episode ${target.num}`, airDate: info?.airDate || null };
-  };
+  // Works out the next episode to log from TMDB season lengths (shared with rows and the sheet).
+  const findNextEpisode = (item) => resolveNextEpisode(progressEntry(item)?.episodes || [], getSeasonFor(item.tmdbId));
 
   // Logs one episode as watched (ratings can be added later), with Undo, and offers Finish when caught up.
   const handleLogEpisode = async (item, ep) => {
@@ -403,7 +389,11 @@ const WatchTogether = () => {
 
   const handleLogNextEpisode = async (item) => {
     const next = await findNextEpisode(item);
-    if (!next) {
+    if (next.status === 'unknown') {
+      toast({ message: "Couldn't check the episode list. Try again in a moment.", tone: 'error' });
+      return;
+    }
+    if (next.status === 'done') {
       toast({ message: `You're caught up on ${item.title}.` });
       return;
     }

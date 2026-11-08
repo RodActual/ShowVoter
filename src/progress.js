@@ -28,3 +28,27 @@ export function isCaughtUp(ep, lastAired) {
   if (!ep || !lastAired) return false;
   return ep.season > lastAired.season || (ep.season === lastAired.season && ep.num >= lastAired.num);
 }
+
+// The one place that decides "next episode". getSeason(n) resolves to { episodes: [{ num, title, airDate }] }
+// or null on failure. Returns { status: 'next', season, num, title, airDate } | { status: 'done' } | { status: 'unknown' }.
+export async function resolveNextEpisode(episodes, getSeason) {
+  const byLatest = (episodes || []).filter((e) => e.num).map((e) => ({ season: e.season || 1, num: e.num }));
+  const last = byLatest.reduce((best, e) => (!best || e.season > best.season || (e.season === best.season && e.num > best.num) ? e : best), null);
+
+  let target;
+  if (!last) {
+    target = { season: 1, num: 1 };
+  } else {
+    const season = await getSeason(last.season);
+    if (!season?.episodes?.length) return { status: 'unknown' };
+    if (last.num < season.episodes.length) {
+      target = { season: last.season, num: last.num + 1 };
+    } else {
+      const nextSeason = await getSeason(last.season + 1);
+      if (!nextSeason?.episodes?.length) return { status: 'done' };
+      target = { season: last.season + 1, num: 1 };
+    }
+  }
+  const info = (await getSeason(target.season))?.episodes?.find((e) => e.num === target.num);
+  return { status: 'next', ...target, title: info?.title || `Episode ${target.num}`, airDate: info?.airDate || null };
+}

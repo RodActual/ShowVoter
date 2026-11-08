@@ -1,6 +1,6 @@
 // Pure list helpers: filtering, sorting, month grouping, Tonight's pick. No React, no I/O (unit-tested).
 import { averageRating } from './users.js';
-import { isMovie, lastWatchedEpisode } from './titles.js';
+import { isMovie } from './titles.js';
 
 const prioritySum = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
 const ratingAvg = (i) => averageRating(i.anthonyRating, i.pamRating);
@@ -74,11 +74,4 @@ export function nextPick(pool, currentId, random = Math.random) {
   const others = pool.filter((i) => i.id !== currentId);
   const from = others.length ? others : pool;
   return from[Math.floor(random() * from.length)];
-}
-
-// Cheap "up next" guess from logged episodes only (no network). The sheet checks TMDB for the exact one.
-export function upNextGuess(item, episodes) {
-  if (isMovie(item)) return null;
-  const last = lastWatchedEpisode(episodes || []);
-  return last ? `S${last.season} E${last.num + 1}` : 'S1 E1';
 }

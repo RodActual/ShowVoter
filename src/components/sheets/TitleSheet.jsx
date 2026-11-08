@@ -1,38 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Ban, Check, ExternalLink, Play, Star, Trash2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
-import tmdbService from '../../services/tmdbService';
 import EpisodeBrowser from './EpisodeBrowser';
 import MoreLikeThis from './MoreLikeThis';
 import WhereToWatch from './WhereToWatch';
+import useNextEpisode from '../../useNextEpisode';
 import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
-import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
+import { daysUntil, isMovie } from '../../titles';
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
-
-// Exact "up next" for TV, checked against TMDB season lengths (only while the sheet is open).
-// Returns null while loading, { season, num } for the next episode, or 'done' when all aired episodes are logged.
-function useUpNext(item, episodes, enabled) {
-  const [next, setNext] = useState(null);
-  useEffect(() => {
-    if (!enabled || isMovie(item) || !item.tmdbId) return undefined;
-    let cancelled = false;
-    const set = (v) => { if (!cancelled) setNext(v); };
-    (async () => {
-      const last = lastWatchedEpisode(episodes || []);
-      if (!last) return set({ season: 1, num: 1 });
-      const season = await tmdbService.getSeasonDetails(item.tmdbId, last.season);
-      if (!season?.episodes) return set({ season: last.season, num: last.num + 1 });
-      if (last.num < season.episodes.length) return set({ season: last.season, num: last.num + 1 });
-      const nextSeason = await tmdbService.getSeasonDetails(item.tmdbId, last.season + 1);
-      set(nextSeason?.episodes?.length ? { season: last.season + 1, num: 1 } : 'done');
-    })();
-    return () => { cancelled = true; };
-  }, [item, episodes, enabled]);
-  return next;
-}
 
 const Section = ({ title, children }) => (
   <section className="border-t border-gray-700 pt-4 mt-4">
@@ -63,7 +41,8 @@ const TitleSheet = ({
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
   const episodes = mode === 'watched' ? item.episodes || [] : watchedEpisodes;
-  const upNext = useUpNext(item, episodes, mode === 'toWatch');
+  const nextEp = useNextEpisode(item, episodes, mode === 'toWatch');
+  const upNext = nextEp?.status === 'next' ? nextEp : nextEp?.status === 'done' ? 'done' : null;
   const days = daysUntil(item.releaseDate);
   const addedByKey = resolveUserKey(item.addedBy, settings);
   const searchLink = `https://www.google.com/search?q=${encodeURIComponent(`watch ${item.title} on ${item.service}`)}`;
