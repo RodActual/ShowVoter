@@ -2,23 +2,19 @@ Watch Together
 A collaborative movie and TV show tracking application designed for couples or friends. Watch Together allows two users to build a shared "To Watch" list, vote on priorities, and track their watch history with individual and combined ratings.
 
 Features
-To Watch List
- * Shared Backlog: Add movies and TV shows to a common list.
- * Priority System: Each user sets a priority level (Low/Medium/High).
- * Combined Priority Score: Items are automatically sorted by the combined urgency of both users.
- * "Up Next" Preview: Automatically suggests the next episode to watch based on your history.
- * New Episode Detection: Checks for new seasons or episodes of finished shows and moves them back to "To Watch".
-Watched History
- * Episode Tracking: Track individual episodes or entire seasons.
- * Dual Ratings: Both users rate every episode/movie individually (1–10).
- * Average Rating: Automatically calculates and displays the couple's average rating.
- * Detailed History: Expand shows to see season-by-season breakdowns of ratings.
-Smart Features
- * TMDB Integration: Fetches metadata, posters, episode lists, and streaming availability automatically.
- * Streaming Info: Shows which service (Netflix, Hulu, Disney+, etc.) a title is available on.
- * One-Tap Edits: Your priority saves on one tap; your rating on one pick.
- * Live Sync: Both phones update instantly, and edits made offline sync when you're back online.
- * Sorting: Sort lists by Priority/Rating, Title, or Streaming Service.
+To Watch
+ * Shared Backlog: Add movies and TV shows from TMDB to a common list.
+ * Compact List: One row per title with both people's priority; tap a row for details, trailer and actions.
+ * Tonight's Pick: Suggests a title you both rated Med or High, with Another and Watched buttons.
+ * Search & Filters: Search, Movie/TV and streaming-service chips, and sorting on both lists.
+ * Swipe Actions: Swipe left to delete (with Undo), right to mark watched.
+ * "Up Next" and New Episode Detection: Suggests the next episode and re-adds shows when new episodes air.
+Watched
+ * Grouped by Month: Newest first under month headings.
+ * Episode Tracking and Dual Ratings: Each person rates titles and episodes 1–10; the couple average is shown.
+ * Stats Tab: Averages, the nicest and the toughest critic, finished vs abandoned.
+Everywhere
+ * Bottom tab bar (To Watch, Watched, Stats), live sync between phones, offline edits, accessible on phones and with a keyboard.
 
 Architecture
  * Hosting: Vercel builds and serves the Vite frontend from `main` (production) and every branch (previews).

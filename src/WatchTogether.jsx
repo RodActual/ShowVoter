@@ -1,20 +1,31 @@
 // src/WatchTogether.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, User, RefreshCw, Dice5, BarChart2, Settings } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, RefreshCw, Settings } from 'lucide-react';
 import api from './services/api';
 import tmdbService from './services/tmdbService';
 
-import ToWatchCard from './components/cards/ToWatchCard';
-import WatchedCard from './components/cards/WatchedCard';
+import TabBar from './components/layout/TabBar';
+import FilterBar from './components/lists/FilterBar';
+import SwipeRow from './components/lists/SwipeRow';
+import TitleRow from './components/lists/TitleRow';
+import TonightsPick from './components/lists/TonightsPick';
+import TitleSheet from './components/sheets/TitleSheet';
+import StatsView from './components/views/StatsView';
 import AddModal from './components/modals/AddModal';
 import RatingModal from './components/modals/RatingModal';
 import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
-import StatsModal from './components/modals/StatsModal';
 import SettingsModal from './components/modals/SettingsModal';
 import { useToast } from './components/common/Toast';
-import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userColor, userName } from './users';
 import { isMovie, lastWatchedEpisode, mediaTypeOf, sameTitle } from './titles';
+import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists';
+
+const NO_FILTERS = { query: '', kind: 'all', services: [] };
+const SORT_OPTIONS = {
+  toWatch: [['priority', 'Priority'], ['title', 'Title'], ['service', 'Service']],
+  watched: [['recent', 'Recent'], ['rating', 'Rating'], ['title', 'Title']]
+};
 
 const SETTINGS_CACHE_KEY = 'watchTogetherSettings';
 const CURRENT_USER_KEY = 'watchTogetherUser';
@@ -59,13 +70,14 @@ const WatchTogether = () => {
   const [currentUser, setCurrentUser] = useState(readSavedUser); // 'user1' | 'user2'
   const [showUserSelect, setShowUserSelect] = useState(() => !readSavedUser());
   const [activeTab, setActiveTab] = useState('toWatch');
-  const [modal, setModal] = useState(null); // 'add' | 'rate' | 'stats' | 'settings' | 'trailer'
-  const [sortMethod, setSortMethod] = useState('priority');
+  const [modal, setModal] = useState(null); // 'add' | 'rate' | 'settings' | 'trailer'
+  const [sheet, setSheet] = useState(null); // { id, mode } of the title whose detail sheet is open
+  const [filters, setFilters] = useState({ toWatch: NO_FILTERS, watched: NO_FILTERS });
+  const [sorts, setSorts] = useState({ toWatch: 'priority', watched: 'recent' });
+  const [tonightId, setTonightId] = useState(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  const [expandedShow, setExpandedShow] = useState(null);
   const [itemToRate, setItemToRate] = useState(null);
   const [trailer, setTrailer] = useState(null);
-  const [highlightId, setHighlightId] = useState(null);
 
   const { items: toWatch, status: toWatchStatus } = useLiveCollection('toWatch', Boolean(currentUser));
   const { items: watched, status: watchedStatus } = useLiveCollection('watched', Boolean(currentUser));
@@ -97,12 +109,6 @@ const WatchTogether = () => {
     };
     return api.watchDoc('settings', 'app', { onDoc: applySettings, onError: (err) => console.error(err) });
   }, []);
-
-  useEffect(() => {
-    if (!highlightId) return undefined;
-    const t = setTimeout(() => setHighlightId(null), 4000);
-    return () => clearTimeout(t);
-  }, [highlightId]);
 
   const handleSaveSettings = async (newSettings) => {
     setAppSettings(newSettings);
@@ -163,6 +169,7 @@ const WatchTogether = () => {
   };
 
   const handleMarkWatched = (item) => {
+    setSheet(null);
     setItemToRate(item);
     setModal('rate');
   };
@@ -210,26 +217,6 @@ const WatchTogether = () => {
     closeModal();
     setItemToRate(null);
     toast({ message: isDNF ? `${itemToRate.title} marked as abandoned` : `${itemToRate.title} moved to Watched`, tone: 'success' });
-  };
-
-  const handleRandomPick = () => {
-    const highPriority = toWatch.filter((item) => (item.anthonyPriority || 0) > 1 && (item.pamPriority || 0) > 1);
-    const pool = highPriority.length > 1 ? highPriority : toWatch;
-    if (pool.length === 0) {
-      toast({ message: 'Add some shows first.' });
-      return;
-    }
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    const show = () => {
-      setHighlightId(pick.id);
-      document.getElementById(`card-${pick.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    };
-    show();
-    toast({
-      message: `🎲 ${pick.title} (from ${pool === highPriority ? 'your shared Med/High picks' : 'the full list'})`,
-      action: { label: 'Watched', onClick: () => handleMarkWatched(pick) },
-      duration: 7000
-    });
   };
 
   const handlePlayTrailer = async (item) => {
@@ -287,6 +274,7 @@ const WatchTogether = () => {
   // Delete right away, with Undo that puts the same document back.
   const handleDelete = async (collection, item) => {
     const { id, ...data } = item;
+    setSheet(null);
     if (!(await attempt(() => api.deleteDoc(collection, id), `Couldn't delete ${item.title}.`))) return;
     toast({
       message: `Deleted ${item.title}`,
@@ -309,90 +297,53 @@ const WatchTogether = () => {
     return attempt(() => api.setDoc('watched', item.id, { episodes, [field]: avg || item[field] || 0 }), "Couldn't save the episode rating.");
   };
 
-  const getSortedItems = (items, type) => [...items].sort((a, b) => {
-    if (sortMethod === 'status') {
-      const diff = (b.status === 'DNF') - (a.status === 'DNF');
-      return diff || a.title.localeCompare(b.title);
-    }
-    if (sortMethod === 'title') return a.title.localeCompare(b.title);
-    if (sortMethod === 'service') return (a.service || '').localeCompare(b.service || '');
-    const prio = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
-    const rating = (i) => averageRating(i.anthonyRating, i.pamRating);
-    return type === 'toWatch' ? prio(b) - prio(a) : rating(b) - rating(a);
-  });
+  // Tonight's pick: keep the current pick while it's still a candidate, else the best one.
+  const { pool: tonightPool, shared: tonightShared } = useMemo(() => pickPool(toWatch), [toWatch]);
+  const tonight = tonightPool.find((i) => i.id === tonightId) || tonightPool[0] || null;
+
+  const watchedFor = useCallback((item) => watched.find((w) => sameTitle(w, item))?.episodes, [watched]);
 
   if (showUserSelect || !currentUser) return <UserSelectModal settings={appSettings} onSelectUser={handleUserSelect} />;
 
+  const isList = activeTab === 'toWatch' || activeTab === 'watched';
   const isToWatch = activeTab === 'toWatch';
   const list = isToWatch ? toWatch : watched;
   const listStatus = isToWatch ? toWatchStatus : watchedStatus;
-  const sortedItems = getSortedItems(list, activeTab);
-  const iconButton = 'min-w-11 min-h-11 flex items-center justify-center rounded-lg text-white';
-  const headerStyle = { background: `linear-gradient(to right, ${appSettings.user1Color}, ${appSettings.user2Color})` };
+  const tabFilters = isList ? filters[activeTab] : NO_FILTERS;
+  const tabSort = isList ? sorts[activeTab] : null;
+  const visible = isList ? sortItems(filterItems(list, tabFilters), tabSort) : [];
+  const filtering = hasActiveFilters(tabFilters);
+  const groups = !isToWatch && tabSort === 'recent' ? groupByMonth(visible) : [{ key: 'all', label: null, items: visible }];
+  const sheetItem = sheet && (sheet.mode === 'toWatch' ? toWatch : watched).find((i) => i.id === sheet.id);
+  const iconButton = 'min-w-11 min-h-11 flex items-center justify-center rounded-lg text-white hover:bg-white/10';
+
+  const renderRow = (item) => (
+    <li key={item.id}>
+      <SwipeRow
+        onSwipeLeft={() => handleDelete(activeTab, item)}
+        onSwipeRight={isToWatch ? () => handleMarkWatched(item) : undefined}
+      >
+        <TitleRow
+          item={item}
+          mode={activeTab}
+          currentUser={currentUser}
+          settings={appSettings}
+          watchedEpisodes={isToWatch ? watchedFor(item) : undefined}
+          onOpen={(i) => setSheet({ id: i.id, mode: activeTab })}
+        />
+      </SwipeRow>
+    </li>
+  );
 
   return (
-    <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen pb-24">
-      <header style={headerStyle} className="text-white px-4 py-3 shadow-lg">
-        <div className="flex justify-between items-center gap-2 [text-shadow:0_1px_2px_rgb(0_0_0/50%)]">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold leading-tight">Watch Together</h1>
-            <p className="text-sm">Signed in as {userName(appSettings, currentUser)}</p>
-          </div>
-          <div className="flex gap-1 shrink-0">
-            <button type="button" onClick={() => setModal('settings')} aria-label="Settings" className={`${iconButton} hover:bg-black/20`}>
-              <Settings size={22} aria-hidden="true" />
-            </button>
-            <button type="button" onClick={() => setShowUserSelect(true)} aria-label="Switch profile" className={`${iconButton} hover:bg-black/20`}>
-              <User size={22} aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <nav aria-label="Lists" className="bg-gray-800 border-b border-gray-700">
-        <div role="tablist" className="flex">
-        {[['toWatch', 'To Watch', toWatch.length, 'border-blue-400 text-blue-300'], ['watched', 'Watched', watched.length, 'border-green-400 text-green-300']].map(([key, label, count, activeClass]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`tab-${key}`}
-            aria-selected={activeTab === key}
-            aria-controls="list-panel"
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 min-h-12 font-medium border-b-2 ${activeTab === key ? activeClass : 'border-transparent text-gray-300'}`}
-          >
-            {label} ({count})
-          </button>
-        ))}
-        </div>
-      </nav>
-
-      <main className="p-4">
-        <div id="list-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`}>
-        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-          <label className="flex items-center gap-2 text-sm text-gray-200">
-            Sort
-            <select
-              value={sortMethod}
-              onChange={(e) => setSortMethod(e.target.value)}
-              className="bg-gray-800 text-white border border-gray-500 rounded-lg px-2 min-h-11"
-            >
-              <option value="priority">{isToWatch ? 'Priority' : 'Rating'}</option>
-              {!isToWatch && <option value="status">Abandoned first</option>}
-              <option value="title">Title</option>
-              <option value="service">Service</option>
-            </select>
-          </label>
-          <div className="flex items-center gap-2">
-            {isToWatch && (
-              <button type="button" onClick={handleRandomPick} aria-label="Pick something for us" title="Pick for us" className={`${iconButton} bg-purple-700 hover:bg-purple-600`}>
-                <Dice5 size={20} aria-hidden="true" />
-              </button>
-            )}
-            <button type="button" onClick={() => setModal('stats')} aria-label="Stats" title="Stats" className={`${iconButton} bg-gray-700 hover:bg-gray-600`}>
-              <BarChart2 size={20} aria-hidden="true" />
-            </button>
+    <div className="max-w-2xl mx-auto bg-gray-900 min-h-screen">
+      <header className="sticky top-0 z-30 bg-gray-900/95 backdrop-blur border-b border-gray-800 px-4 pt-[env(safe-area-inset-top)]">
+        <div className="flex items-center justify-between gap-2 min-h-14">
+          <h1 className="text-lg font-bold text-white">
+            {activeTab === 'toWatch' ? 'To Watch' : activeTab === 'watched' ? 'Watched' : 'Stats'}
+            {isList && <span className="ml-2 text-sm font-normal text-gray-300">{list.length}</span>}
+          </h1>
+          <div className="flex items-center gap-1">
             {isToWatch && (
               <button
                 type="button"
@@ -400,67 +351,128 @@ const WatchTogether = () => {
                 disabled={isCheckingUpdates}
                 aria-label="Check watched shows for new episodes"
                 title="Check for new episodes"
-                className={`${iconButton} bg-gray-700 hover:bg-gray-600 disabled:opacity-50`}
+                className={`${iconButton} disabled:opacity-50`}
               >
                 <RefreshCw size={20} aria-hidden="true" className={isCheckingUpdates ? 'animate-spin' : ''} />
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowUserSelect(true)}
+              aria-label={`Signed in as ${userName(appSettings, currentUser)}. Switch profile`}
+              className="min-h-11 px-3 rounded-full bg-gray-800 border border-gray-700 text-sm text-white flex items-center gap-2"
+            >
+              <span aria-hidden="true" className="w-3 h-3 rounded-full" style={{ backgroundColor: userColor(appSettings, currentUser) }} />
+              {userName(appSettings, currentUser)}
+            </button>
+            <button type="button" onClick={() => setModal('settings')} aria-label="Settings" className={iconButton}>
+              <Settings size={22} aria-hidden="true" />
+            </button>
           </div>
         </div>
+      </header>
 
-        {listStatus === 'loading' ? (
-          <div role="status" aria-label="Loading" className="space-y-3">
-            {[0, 1, 2].map((i) => <div key={i} className="h-40 bg-gray-800 rounded-lg animate-pulse" />)}
-          </div>
-        ) : listStatus === 'error' ? (
-          <p className="text-center text-red-200 py-8">Couldn't load your list. Try signing out and back in from Settings.</p>
-        ) : sortedItems.length === 0 ? (
-          <p className="text-center text-gray-300 py-8">
-            {isToWatch ? 'Nothing to watch yet. Tap Add to find something.' : 'Nothing watched yet.'}
-          </p>
-        ) : isToWatch ? (
-          sortedItems.map((item) => (
-            <ToWatchCard
-              key={item.id}
-              item={item}
-              currentUser={currentUser}
-              settings={appSettings}
-              highlighted={highlightId === item.id}
-              onDelete={(i) => handleDelete('toWatch', i)}
-              onMarkWatched={handleMarkWatched}
-              onSetPriority={handleSetPriority}
-              watchedEpisodes={watched.find((w) => sameTitle(w, item))?.episodes}
-              onPlayTrailer={handlePlayTrailer}
-            />
-          ))
+      <main className="px-4 pt-3 pb-44">
+        {activeTab === 'stats' ? (
+          <StatsView watched={watched} toWatchCount={toWatch.length} settings={appSettings} />
         ) : (
-          sortedItems.map((item) => (
-            <WatchedCard
-              key={item.id}
-              item={item}
-              currentUser={currentUser}
-              settings={appSettings}
-              isExpanded={expandedShow === item.id}
-              onToggleExpanded={() => setExpandedShow(expandedShow === item.id ? null : item.id)}
-              onDelete={(i) => handleDelete('watched', i)}
-              onSetRating={handleSetRating}
-              onSetEpisodeRating={handleSetEpisodeRating}
-            />
-          ))
+          <>
+            {isToWatch && !filtering && listStatus === 'ready' && (
+              <TonightsPick
+                pick={tonight}
+                shared={tonightShared}
+                poolSize={tonightPool.length}
+                onAnother={() => setTonightId(nextPick(tonightPool, tonight?.id)?.id ?? null)}
+                onWatched={handleMarkWatched}
+                onOpen={(i) => setSheet({ id: i.id, mode: 'toWatch' })}
+              />
+            )}
+
+            {list.length > 0 && (
+              <FilterBar
+                filters={tabFilters}
+                onChange={(f) => setFilters((prev) => ({ ...prev, [activeTab]: f }))}
+                services={servicesOf(list)}
+                sort={tabSort}
+                sortOptions={SORT_OPTIONS[activeTab]}
+                onSortChange={(v) => setSorts((prev) => ({ ...prev, [activeTab]: v }))}
+                listLabel={isToWatch ? 'To Watch' : 'Watched'}
+              />
+            )}
+
+            {listStatus === 'loading' ? (
+              <ul role="status" aria-label="Loading" className="space-y-2">
+                {[0, 1, 2, 3, 4].map((i) => <li key={i} className="h-[88px] bg-gray-800 rounded-xl animate-pulse" />)}
+              </ul>
+            ) : listStatus === 'error' ? (
+              <p className="text-center text-red-200 py-8">Couldn't load your list. Try signing out and back in from Settings.</p>
+            ) : list.length === 0 ? (
+              <p className="text-center text-gray-200 py-10">
+                {isToWatch ? 'Nothing to watch yet. Tap Add to find something.' : 'Nothing watched yet.'}
+              </p>
+            ) : visible.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-gray-200 mb-3">No titles match these filters.</p>
+                <button
+                  type="button"
+                  onClick={() => setFilters((prev) => ({ ...prev, [activeTab]: NO_FILTERS }))}
+                  className="min-h-11 px-4 rounded-lg bg-gray-700 text-white font-semibold"
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <>
+                {filtering && <p className="text-xs text-gray-200 mb-2" role="status">{visible.length} of {list.length} titles</p>}
+                {groups.map((g) => (
+                  <section key={g.key} aria-label={g.label || undefined} className="mb-4">
+                    {g.label && <h2 className="text-xs font-bold uppercase tracking-wider text-gray-200 mb-2 mt-1">{g.label}</h2>}
+                    <ul className="space-y-2">{g.items.map(renderRow)}</ul>
+                  </section>
+                ))}
+                <p className="text-center text-xs text-gray-300 mt-2">
+                  Tip: swipe a row left to delete{isToWatch ? ', right to mark watched' : ''}.
+                </p>
+              </>
+            )}
+          </>
         )}
-        </div>
       </main>
 
       {isToWatch && (
         <button
           type="button"
           onClick={() => setModal('add')}
-          className="fixed bottom-5 right-5 z-40 bg-blue-600 text-white pl-4 pr-5 min-h-14 rounded-full shadow-xl flex items-center gap-2 font-semibold hover:bg-blue-700"
+          aria-label="Add a title"
+          title="Add a title"
+          className="fixed right-4 z-40 bottom-[calc(5rem+env(safe-area-inset-bottom))] bg-blue-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-blue-700"
         >
-          <Plus size={22} aria-hidden="true" /> Add
+          <Plus size={26} aria-hidden="true" />
         </button>
       )}
 
+      <TabBar
+        active={activeTab}
+        counts={{ toWatch: toWatch.length, watched: watched.length }}
+        onChange={(tab) => { setActiveTab(tab); window.scrollTo({ top: 0 }); }}
+      />
+
+      {sheetItem && (
+        <TitleSheet
+          item={sheetItem}
+          mode={sheet.mode}
+          currentUser={currentUser}
+          settings={appSettings}
+          watchedEpisodes={sheet.mode === 'toWatch' ? watchedFor(sheetItem) : undefined}
+          onClose={() => setSheet(null)}
+          onSetPriority={handleSetPriority}
+          onMarkWatched={handleMarkWatched}
+          onSetRating={handleSetRating}
+          onSetEpisodeRating={handleSetEpisodeRating}
+          onDelete={(i) => handleDelete(sheet.mode, i)}
+          onPlayTrailer={handlePlayTrailer}
+        />
+      )}
       {modal === 'add' && <AddModal onClose={closeModal} onAdd={handleAddItem} />}
       {modal === 'rate' && itemToRate && (
         <RatingModal
@@ -473,7 +485,6 @@ const WatchTogether = () => {
         />
       )}
       {modal === 'trailer' && trailer && <TrailerModal videoKey={trailer.key} title={trailer.title} onClose={closeModal} />}
-      {modal === 'stats' && <StatsModal watched={watched} settings={appSettings} onClose={closeModal} />}
       {modal === 'settings' && (
         <SettingsModal
           currentSettings={appSettings}

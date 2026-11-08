@@ -2,7 +2,7 @@
 
 export const mediaTypeOf = (item) => item.mediaType || (item.type === 'Movie' ? 'movie' : 'tv');
 export const isMovie = (item) => mediaTypeOf(item) === 'movie';
-export const sameTitle = (a, b) => a.tmdbId === b.tmdbId && mediaTypeOf(a) === mediaTypeOf(b);
+export const sameTitle = (a, b) => a.tmdbId != null && a.tmdbId === b.tmdbId && mediaTypeOf(a) === mediaTypeOf(b);
 
 // "2026-12-01" as a local date (new Date('2026-12-01') is UTC midnight, a day early in the US).
 export function parseLocalDate(value) {

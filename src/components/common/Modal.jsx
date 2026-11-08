@@ -1,6 +1,9 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
+// Open dialogs, newest last. Only the topmost one reacts to Esc and Tab (e.g. trailer over a detail sheet).
+const stack = [];
+
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
 // Accessible dialog: Esc and backdrop close it, focus stays inside and returns to the
@@ -14,6 +17,8 @@ const Modal = ({ title, onClose, children, maxWidth = 'max-w-2xl', padded = true
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
 
   useEffect(() => {
+    const token = {};
+    stack.push(token);
     const opener = openerRef.current;
     const panel = panelRef.current;
     const first = panel?.querySelector('[autofocus], input, select') || panel?.querySelector(FOCUSABLE);
@@ -23,6 +28,7 @@ const Modal = ({ title, onClose, children, maxWidth = 'max-w-2xl', padded = true
     document.body.style.overflow = 'hidden';
 
     const onKey = (e) => {
+      if (stack[stack.length - 1] !== token) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
@@ -39,6 +45,7 @@ const Modal = ({ title, onClose, children, maxWidth = 'max-w-2xl', padded = true
     document.addEventListener('keydown', onKey);
 
     return () => {
+      stack.splice(stack.indexOf(token), 1);
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
       if (opener && typeof opener.focus === 'function') opener.focus();
