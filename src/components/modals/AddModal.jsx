@@ -107,7 +107,7 @@ const AddModal = ({ onClose, onAdd }) => {
                           <Star size={12} aria-hidden="true" className="fill-yellow-400 text-yellow-400" /> {result.rating}/10
                         </span>
                       )}
-                      <span className="block text-xs text-gray-200 mt-1 line-clamp-2">{result.overview}</span>
+                      <span className="text-xs text-gray-200 mt-1 line-clamp-2">{result.overview}</span>
                     </span>
                   </button>
                 </li>

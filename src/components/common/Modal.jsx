@@ -63,7 +63,7 @@ const Modal = ({ title, onClose, children, maxWidth = 'max-w-2xl', padded = true
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`bg-gray-800 w-full ${maxWidth} max-h-[92vh] overflow-y-auto border border-gray-700 rounded-t-2xl sm:rounded-lg shadow-xl outline-none ${padded ? 'p-5' : ''}`}
+        className={`bg-gray-800 w-full ${maxWidth} max-h-[92vh] overflow-y-auto border border-gray-700 rounded-t-2xl sm:rounded-lg shadow-xl outline-none ${padded ? 'p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]' : 'pb-[env(safe-area-inset-bottom)]'}`}
       >
         <div className={`flex justify-between items-start gap-3 ${padded ? 'mb-4' : 'p-3 bg-gray-900 border-b border-gray-700'}`}>
           <h2 id={titleId} className="text-lg sm:text-xl font-bold text-white leading-snug">{title}</h2>

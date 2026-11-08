@@ -26,7 +26,7 @@ const LoginScreen = () => {
   };
 
   return (
-    <main className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+    <main className="min-h-[100dvh] bg-gray-900 flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))]">
       <form onSubmit={handleSubmit} className="bg-gray-800 rounded-lg p-8 max-w-sm w-full border border-gray-700 text-center">
         <Lock size={48} aria-hidden="true" className="mx-auto mb-4 text-blue-300" />
         <h1 className="text-2xl font-bold text-white mb-6">Watch Together</h1>

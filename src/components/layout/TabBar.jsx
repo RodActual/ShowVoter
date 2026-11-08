@@ -11,9 +11,9 @@ const TABS = [
 const TabBar = ({ active, counts, onChange }) => (
   <nav
     aria-label="Main"
-    className="fixed bottom-0 inset-x-0 z-40 bg-gray-900/95 backdrop-blur border-t border-gray-700 pb-[env(safe-area-inset-bottom)]"
+    className="fixed bottom-0 inset-x-0 z-40 bg-gray-900/95 backdrop-blur border-t border-gray-700 pb-[env(safe-area-inset-bottom)] px-safe"
   >
-    <ul className="max-w-2xl mx-auto grid grid-cols-3">
+    <ul className="max-w-xl mx-auto grid grid-cols-3">
       {TABS.map(({ key, label, Icon }) => {
         const selected = active === key;
         return (
