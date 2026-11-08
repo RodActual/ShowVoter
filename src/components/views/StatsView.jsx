@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trophy, Frown, Film } from 'lucide-react';
-import { DEFAULT_SETTINGS, userColor, userName } from '../../users';
+import { DEFAULT_SETTINGS, userName } from '../../users';
 
 function calculateStats(watched) {
   if (!watched || watched.length === 0) return null;
@@ -41,7 +41,6 @@ const StatsView = ({ watched, toWatchCount = 0, settings = DEFAULT_SETTINGS }) =
             {['user1', 'user2'].map((key) => (
               <div key={key} className="flex flex-col-reverse">
                 <dt className="text-xs text-gray-200 uppercase tracking-wider mt-1 flex items-center justify-center gap-1">
-                  <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ backgroundColor: userColor(settings, key) }} />
                   {userName(settings, key)}'s average
                 </dt>
                 <dd className="text-3xl font-bold text-white tabular-nums">{stats[key].avg.toFixed(1)}</dd>

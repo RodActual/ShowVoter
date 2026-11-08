@@ -1,13 +1,12 @@
-// Stable user identity. 'user1'/'user2' never change; names and colors are display-only.
+// Stable user identity. 'user1'/'user2' never change; names are display-only.
 // DB fields keep their original names (anthony* = user1, pam* = user2) so existing data still works.
 
 export const USER_KEYS = ['user1', 'user2'];
 
+// Display names only; stored colors from older versions are ignored.
 export const DEFAULT_SETTINGS = {
   user1Name: 'Anthony',
-  user1Color: '#2563EB',
-  user2Name: 'Pam',
-  user2Color: '#DB2777'
+  user2Name: 'Pam'
 };
 
 const LEGACY_DEFAULT_NAMES = { user1: 'Anthony', user2: 'Pam' };
@@ -16,7 +15,6 @@ export const ratingField = (userKey) => (userKey === 'user1' ? 'anthonyRating' :
 export const priorityField = (userKey) => (userKey === 'user1' ? 'anthonyPriority' : 'pamPriority');
 
 export const userName = (settings, userKey) => settings[`${userKey}Name`] || LEGACY_DEFAULT_NAMES[userKey];
-export const userColor = (settings, userKey) => settings[`${userKey}Color`];
 
 // Older records stored a display name ("Anthony") instead of a key. Returns null when unknown (e.g. 'System').
 export function resolveUserKey(value, settings) {

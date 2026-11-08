@@ -4,7 +4,7 @@ import Modal from '../common/Modal';
 import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import tmdbService from '../../services/tmdbService';
-import { averageRating, priorityField, ratingField, resolveUserKey, userColor, userName } from '../../users';
+import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
 import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
@@ -136,7 +136,6 @@ const TitleSheet = ({
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-100">Your rating: <strong className="text-white">{myRating ? `${myRating}/10` : 'not rated'}</strong></span>
               <span className="text-gray-200 flex items-center gap-1">
-                <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ backgroundColor: userColor(settings, partner) }} />
                 {userName(settings, partner)}: {partnerRating ? `${partnerRating}/10` : 'not rated'}
               </span>
             </div>

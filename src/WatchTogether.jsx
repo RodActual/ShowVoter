@@ -17,7 +17,7 @@ import UserSelectModal from './components/modals/UserSelectModal';
 import TrailerModal from './components/modals/TrailerModal';
 import SettingsModal from './components/modals/SettingsModal';
 import { useToast } from './components/common/Toast';
-import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userColor, userName } from './users';
+import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
 import { isMovie, lastWatchedEpisode, mediaTypeOf, sameTitle } from './titles';
 import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists';
 
@@ -362,7 +362,9 @@ const WatchTogether = () => {
               aria-label={`Signed in as ${userName(appSettings, currentUser)}. Switch profile`}
               className="min-h-11 px-3 rounded-full bg-gray-800 border border-gray-700 text-sm text-white flex items-center gap-2"
             >
-              <span aria-hidden="true" className="w-3 h-3 rounded-full" style={{ backgroundColor: userColor(appSettings, currentUser) }} />
+              <span aria-hidden="true" className="w-6 h-6 -ml-1 rounded-full bg-blue-600 text-xs font-bold flex items-center justify-center">
+                {userName(appSettings, currentUser).slice(0, 1).toUpperCase()}
+              </span>
               {userName(appSettings, currentUser)}
             </button>
             <button type="button" onClick={() => setModal('settings')} aria-label="Settings" className={iconButton}>
