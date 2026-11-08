@@ -18,6 +18,12 @@ test('filters combine kind, service and text', () => {
   assert.strictEqual(hasActiveFilters({ query: ' x ' }), true);
 });
 
+test('ours filter keeps titles on our services', () => {
+  assert.deepStrictEqual(filterItems(items, { ours: true }, ['Netflix']).map((i) => i.id), ['c', 'd']);
+  assert.deepStrictEqual(filterItems(items, { ours: true }, []).map((i) => i.id), ['a', 'b', 'c', 'd']);
+  assert.strictEqual(hasActiveFilters({ ours: true }), true);
+});
+
 test('services are listed most common first', () => {
   assert.deepStrictEqual(servicesOf(items), ['Netflix', 'Apple TV+', 'Max']);
 });

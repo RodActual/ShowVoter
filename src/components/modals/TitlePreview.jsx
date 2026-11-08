@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Play, Plus, Star, Check } from 'lucide-react';
 import Modal from '../common/Modal';
 import tmdbService from '../../services/tmdbService';
+import { matchProviders } from '../../streaming';
 
 // Preview of a title that isn't on your lists yet: overview, where it streams, trailer, Add.
-const TitlePreview = ({ title, listed, because, onClose, onAdd, onTrailer }) => {
+const TitlePreview = ({ title, listed, because, ourServices = [], onClose, onAdd, onTrailer }) => {
   const [providers, setProviders] = useState(null);
   const [adding, setAdding] = useState(false);
 
@@ -17,7 +18,7 @@ const TitlePreview = ({ title, listed, because, onClose, onAdd, onTrailer }) => 
   const add = async () => {
     setAdding(true);
     try {
-      await onAdd(title, providers?.[0]?.name || 'Other');
+      await onAdd(title, matchProviders(providers || [], ourServices).best || providers?.[0]?.name || 'Other');
     } finally {
       setAdding(false);
     }

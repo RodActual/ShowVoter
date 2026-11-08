@@ -6,6 +6,7 @@ import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import tmdbService from '../../services/tmdbService';
 import EpisodeBrowser from './EpisodeBrowser';
 import MoreLikeThis from './MoreLikeThis';
+import WhereToWatch from './WhereToWatch';
 import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
 import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
 
@@ -56,7 +57,8 @@ const TitleSheet = ({
   onDelete,
   onPlayTrailer,
   isListed,
-  onPreview
+  onPreview,
+  onUpdateService
 }) => {
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
@@ -204,6 +206,12 @@ const TitleSheet = ({
             onRateEpisode={!isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
             onLogEpisode={!isDNF && onLogEpisode ? (ep) => onLogEpisode(item, ep) : undefined}
           />
+        </Section>
+      )}
+
+      {item.tmdbId && (
+        <Section title="Where to watch">
+          <WhereToWatch item={item} ourServices={settings.services || []} onUpdateService={mode === 'toWatch' ? onUpdateService : undefined} />
         </Section>
       )}
 

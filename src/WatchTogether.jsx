@@ -22,9 +22,10 @@ import { useToast } from './components/common/Toast';
 import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
 import { isMovie, lastWatchedEpisode, localDateString, mediaTypeOf, sameTitle } from './titles';
 import { isCaughtUp, mergeEpisode, nextAfter, removeEpisode } from './progress';
+import { matchProviders } from './streaming';
 import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists';
 
-const NO_FILTERS = { query: '', kind: 'all', services: [] };
+const NO_FILTERS = { query: '', kind: 'all', services: [], ours: false };
 const SORT_OPTIONS = {
   toWatch: [['priority', 'Priority'], ['title', 'Title'], ['service', 'Service']],
   watched: [['recent', 'Recent'], ['rating', 'Rating'], ['title', 'Title']]
@@ -315,7 +316,8 @@ const WatchTogether = () => {
       if (matched) {
         // Fill in where to stream it (best effort; the match is already saved).
         tmdbService.getStreamingProviders(card.tmdbId, card.mediaType).then((providers) => {
-          if (providers[0]) api.setDoc('toWatch', `match-${card.key}`, { service: providers[0].name }).catch(() => {});
+          const service = matchProviders(providers, appSettings.services || []).best || providers[0]?.name;
+          if (service) api.setDoc('toWatch', `match-${card.key}`, { service }).catch(() => {});
         });
       }
       return matched;
@@ -439,7 +441,7 @@ const WatchTogether = () => {
   const listStatus = isToWatch ? toWatchStatus : watchedStatus;
   const tabFilters = isList ? filters[activeTab] : NO_FILTERS;
   const tabSort = isList ? sorts[activeTab] : null;
-  const visible = isList ? sortItems(filterItems(list, tabFilters), tabSort) : [];
+  const visible = isList ? sortItems(filterItems(list, tabFilters, appSettings.services || []), tabSort) : [];
   const filtering = hasActiveFilters(tabFilters);
   const groups = !isToWatch && tabSort === 'recent' ? groupByMonth(visible) : [{ key: 'all', label: null, items: visible }];
   const sheetItem = sheet && (sheet.mode === 'toWatch' ? toWatch : watched).find((i) => i.id === sheet.id);
@@ -540,6 +542,7 @@ const WatchTogether = () => {
                 sortOptions={SORT_OPTIONS[activeTab]}
                 onSortChange={(v) => setSorts((prev) => ({ ...prev, [activeTab]: v }))}
                 listLabel={isToWatch ? 'To Watch' : 'Watched'}
+                showOurs={isToWatch && (appSettings.services || []).length > 0}
               />
             )}
 
@@ -618,6 +621,7 @@ const WatchTogether = () => {
           onPlayTrailer={handlePlayTrailer}
           isListed={isListed}
           onPreview={(t) => openPreview(t)}
+          onUpdateService={(i, service) => attempt(() => api.setDoc('toWatch', i.id, { service }), "Couldn't update the service.")}
         />
       )}
       {preview && (
@@ -625,6 +629,7 @@ const WatchTogether = () => {
           title={preview.title}
           because={preview.because}
           listed={isListed(preview.title)}
+          ourServices={appSettings.services || []}
           onClose={() => setPreview(null)}
           onAdd={handleAddFromPreview}
           onTrailer={handlePlayTrailer}

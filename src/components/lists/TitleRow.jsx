@@ -14,8 +14,9 @@ const PRIORITY_CHIP = {
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
 
-function metaLine(item, mode, watchedEpisodes) {
+function metaLine(item, mode, watchedEpisodes, ourServices) {
   const parts = [item.service, isMovie(item) ? 'Movie' : 'TV'];
+  if (mode === 'toWatch' && ourServices?.length && !ourServices.includes(item.service)) parts.push('not on yours');
   if (mode === 'toWatch') {
     const days = daysUntil(item.releaseDate);
     if (days > 0) parts.push(days === 1 ? 'out tomorrow' : `out in ${days} days`);
@@ -29,6 +30,7 @@ function metaLine(item, mode, watchedEpisodes) {
 
 // One compact, tappable row. Opens the detail sheet; all actions live there.
 const TitleRow = ({ item, mode, currentUser, settings, watchedEpisodes, highlighted, onOpen }) => {
+  const ourServices = settings.services || [];
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
 
@@ -72,7 +74,7 @@ const TitleRow = ({ item, mode, currentUser, settings, watchedEpisodes, highligh
         : <div aria-hidden="true" className="w-10 h-[60px] rounded-md shrink-0 bg-gray-700" />}
       <span className="flex-1 min-w-0">
         <span className="font-semibold text-white leading-snug line-clamp-1">{item.title}</span>
-        <span className="block text-xs text-gray-200 mt-0.5 truncate">{metaLine(item, mode, watchedEpisodes)}</span>
+        <span className="block text-xs text-gray-200 mt-0.5 truncate">{metaLine(item, mode, watchedEpisodes, ourServices)}</span>
         {item.isNewEpisodes && (
           <span className="inline-block mt-1 text-[11px] font-bold bg-green-700 text-white px-1.5 py-0.5 rounded">New episodes</span>
         )}
