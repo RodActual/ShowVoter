@@ -1,246 +1,218 @@
 // src/components/modals/RatingModal.jsx
-import React, { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, CheckSquare, Square, Ban } from 'lucide-react';
-import StarRating from '../common/StarRating';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp, Ban } from 'lucide-react';
+import Modal from '../common/Modal';
+import RatingPicker, { RatingSelect } from '../common/RatingPicker';
 import tmdbService from '../../services/tmdbService';
+import { ratingField, userName } from '../../users';
+import { isMovie, localDateString, sameTitle } from '../../titles';
 
-const RatingModal = ({ item, currentUser, watchedHistory, onClose, onSubmit }) => {
-  const [anthonyRating, setAnthonyRating] = useState(3);
-  const [pamRating, setPamRating] = useState(3);
+// Rates a title as the signed-in user only; the partner rates later on their own device.
+const RatingModal = ({ item, currentUser, settings, watchedHistory, onClose, onSubmit }) => {
+  const [myRating, setMyRating] = useState(0);
   const [numEpisodes, setNumEpisodes] = useState(0);
   const [episodes, setEpisodes] = useState([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
-  const [expandedSeason, setExpandedSeason] = useState(1);
-  
-  // NEW: DNF State
+  const [loadError, setLoadError] = useState(false);
+  const [expandedSeason, setExpandedSeason] = useState(null);
   const [isDNF, setIsDNF] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const myField = ratingField(currentUser);
+  const partner = currentUser === 'user1' ? 'user2' : 'user1';
+  const tv = !isMovie(item);
+  // Read history through a ref so live updates don't reload the list and wipe your selections.
+  const historyRef = useRef(watchedHistory);
+  historyRef.current = watchedHistory;
 
   useEffect(() => {
-    if (item?.tmdbId && (item?.type === 'TV Show' || item?.mediaType === 'tv')) {
-      handleLoadEpisodesFromTMDB();
-    }
-  }, [item]);
+    if (!tv || !item.tmdbId) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingEpisodes(true);
+      setLoadError(false);
+      try {
+        const details = await tmdbService.getDetails(item.tmdbId, 'tv');
+        if (!details) throw new Error('details unavailable');
+        const totalSeasons = details.numberOfSeasons || 1;
+        const existingShow = historyRef.current.find((w) => sameTitle(w, item));
+        const watchedSet = new Set((existingShow?.episodes || []).map((ep) => `${ep.season}-${ep.num}`));
 
-  const handleLoadEpisodesFromTMDB = async () => {
-    setLoadingEpisodes(true);
-    try {
-      const details = await tmdbService.getDetails(item.tmdbId, 'tv');
-      let totalSeasons = details?.numberOfSeasons || 1;
+        const seasonNumbers = Array.from({ length: totalSeasons }, (_, i) => i + 1);
+        const seasons = await Promise.all(seasonNumbers.map((n) => tmdbService.getSeasonDetails(item.tmdbId, n)));
+        const today = localDateString();
 
-      // 1. Identify already watched episodes
-      const existingShow = watchedHistory.find(
-        w => w.tmdbId === item.tmdbId && w.mediaType === item.mediaType
-      );
-      const watchedSet = new Set();
-      if (existingShow?.episodes) {
-        existingShow.episodes.forEach(ep => watchedSet.add(`${ep.season}-${ep.num}`));
+        const all = seasons.flatMap((seasonData, idx) => (seasonData?.episodes || [])
+          // Only aired episodes you haven't logged yet.
+          .filter((ep) => !watchedSet.has(`${seasonNumbers[idx]}-${ep.num}`) && ep.airDate && ep.airDate <= today)
+          .map((ep) => ({ season: seasonNumbers[idx], num: ep.num, title: ep.title || `Episode ${ep.num}`, isSelected: true })));
+
+        if (cancelled) return;
+        setEpisodes(all);
+        setExpandedSeason(all[0]?.season ?? null);
+      } catch {
+        if (!cancelled) setLoadError(true);
       }
+      if (!cancelled) setLoadingEpisodes(false);
+    })();
+    return () => { cancelled = true; };
+  }, [item, tv]);
 
-      let allEpisodes = [];
-      // 2. Fetch all seasons
-      for (let i = 1; i <= totalSeasons; i++) {
-        const seasonData = await tmdbService.getSeasonDetails(item.tmdbId, i);
-        if (seasonData?.episodes) {
-          const currentSeasonEps = seasonData.episodes
-            // 3. Filter OUT previously watched episodes
-            .filter(ep => {
-              const epNum = ep.num || ep.episode_number;
-              return !watchedSet.has(`${i}-${epNum}`);
-            })
-            .map((ep, index) => ({
-              season: i,
-              num: ep.num || ep.episode_number || (index + 1),
-              title: ep.title || ep.name || `Episode ${index + 1}`,
-              anthonyRating: 5,
-              pamRating: 5,
-              isSelected: true
-            }));
-          allEpisodes = [...allEpisodes, ...currentSeasonEps];
-        }
-      }
-
-      if (allEpisodes.length > 0) {
-        setEpisodes(allEpisodes);
-        setExpandedSeason(allEpisodes[0].season);
-      } else if (watchedSet.size === 0) {
-        // Only default to manual if truly no data found AND no history
-        handleAddEpisodesManually();
-      }
-    } catch (error) {
-      console.error('Error loading episodes:', error);
-      handleAddEpisodesManually();
-    }
-    setLoadingEpisodes(false);
+  const addEpisodesManually = () => {
+    setEpisodes(Array.from({ length: numEpisodes }, (_, i) => ({ season: 1, num: i + 1, title: `Episode ${i + 1}`, isSelected: true })));
+    setExpandedSeason(1);
   };
 
-  const handleAddEpisodesManually = () => {
-    const newEps = Array.from({ length: numEpisodes }, (_, i) => ({
-      num: i + 1,
-      title: `Episode ${i + 1}`,
-      anthonyRating: 5,
-      pamRating: 5,
-      isSelected: true
-    }));
-    setEpisodes(newEps);
-  };
+  const updateEpisode = (ep, changes) => setEpisodes((prev) => prev.map((e) => (e.season === ep.season && e.num === ep.num ? { ...e, ...changes } : e)));
+  const setSeasonSelected = (season, isSelected) => setEpisodes((prev) => prev.map((e) => (e.season === season ? { ...e, isSelected } : e)));
+  const setAllSelected = (isSelected) => setEpisodes((prev) => prev.map((e) => ({ ...e, isSelected })));
 
-  // --- Handlers for episode interaction ---
-  const handleEpisodeRatingChange = (epNum, seasonNum, user, rating) => {
-    setEpisodes(prev => prev.map(ep =>
-      (ep.num === epNum && (ep.season === seasonNum || !ep.season))
-        ? { ...ep, [user === 'Anthony' ? 'anthonyRating' : 'pamRating']: rating }
-        : ep
-    ));
-  };
-
-  const toggleEpisodeSelection = (epNum, seasonNum) => {
-    setEpisodes(prev => prev.map(ep => 
-      (ep.num === epNum && (ep.season === seasonNum || !ep.season))
-        ? { ...ep, isSelected: !ep.isSelected }
-        : ep
-    ));
-  };
-
-  const toggleSeasonSelection = (seasonNum, select) => {
-    setEpisodes(prev => prev.map(ep => 
-      ep.season === seasonNum ? { ...ep, isSelected: select } : ep
-    ));
-  };
-
-  const toggleAllSelection = (select) => {
-    setEpisodes(prev => prev.map(ep => ({ ...ep, isSelected: select })));
-  };
-
-  const episodesBySeason = episodes.length > 0 ? episodes.reduce((acc, ep) => {
-    const s = ep.season || 1;
-    if (!acc[s]) acc[s] = [];
-    acc[s].push(ep);
+  const episodesBySeason = episodes.reduce((acc, ep) => {
+    (acc[ep.season] ||= []).push(ep);
     return acc;
-  }, {}) : {};
+  }, {});
+  const selectedCount = episodes.filter((e) => e.isSelected).length;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSubmit(myRating, episodes, isDNF);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-white">Rate: {item?.title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-200"><X size={24} /></button>
-        </div>
-
-        <div className="space-y-4">
-          
-          {/* Rating Section - Disable opacity if DNF is selected */}
-          <div className={`bg-gray-700 p-4 rounded transition-opacity ${isDNF ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="font-semibold mb-3 text-white">Overall Rating (1-10 stars)</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-gray-300 mb-2">Anthony's Rating</div>
-                <StarRating rating={anthonyRating} editable={currentUser === 'Anthony'} onRate={setAnthonyRating} size={28} />
-              </div>
-              <div>
-                <div className="text-sm text-gray-300 mb-2">Pam's Rating</div>
-                <StarRating rating={pamRating} editable={currentUser === 'Pam'} onRate={setPamRating} size={28} />
-              </div>
-            </div>
+    <Modal title={`Rate: ${item.title}`} onClose={onClose}>
+      <div className="space-y-4">
+        <fieldset disabled={isDNF} className={`bg-gray-700 p-4 rounded-lg ${isDNF ? 'opacity-50' : ''}`}>
+          <legend className="sr-only">Your overall rating</legend>
+          <div className="flex justify-between items-baseline mb-3">
+            <h3 className="font-semibold text-white">Your rating ({userName(settings, currentUser)})</h3>
+            <span className="text-sm text-gray-200 tabular-nums">{myRating ? `${myRating}/10` : 'Not rated'}</span>
           </div>
+          <RatingPicker label="Your overall rating" value={myRating} onChange={setMyRating} />
+          <p className="text-xs text-gray-200 mt-3">
+            {userName(settings, partner)} adds theirs on their own device.
+            {tv && ' Leave this empty to use the average of your episode ratings.'}
+          </p>
+        </fieldset>
 
-          {(item?.type === 'TV Show' || item?.mediaType === 'tv') && (
-            <div className={`bg-blue-900 bg-opacity-40 p-4 rounded border border-blue-800 ${isDNF ? 'opacity-50 pointer-events-none' : ''}`}>
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold text-white">Episodes (Unwatched)</h3>
-                <div className="flex gap-2 text-xs">
-                  <button onClick={() => toggleAllSelection(true)} className="text-blue-300 hover:text-blue-200 underline">Select All</button>
-                  <span className="text-gray-500">|</span>
-                  <button onClick={() => toggleAllSelection(false)} className="text-blue-300 hover:text-blue-200 underline">Deselect All</button>
-                </div>
-              </div>
-              
-              {loadingEpisodes ? (
-                <div className="text-center text-gray-300 py-4">Loading seasons and episodes...</div>
-              ) : episodes.length === 0 ? (
-                <div>
-                  <label className="text-sm text-gray-300 block mb-2">No new episodes found.</label>
-                  <div className="flex gap-2 mt-4 pt-4 border-t border-gray-600">
-                    <p className="text-xs text-gray-400 self-center">Add manually?</p>
-                    <input type="number" min="0" max="50" value={numEpisodes} onChange={(e) => setNumEpisodes(parseInt(e.target.value) || 0)} className="border border-gray-600 rounded px-3 py-2 w-24 bg-gray-700 text-white" />
-                    <button onClick={handleAddEpisodesManually} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Add Manual</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                  {Object.keys(episodesBySeason).map(seasonNum => {
-                    const seasonInt = parseInt(seasonNum);
-                    const allSelected = episodesBySeason[seasonNum].every(ep => ep.isSelected);
-                    return (
-                      <div key={seasonNum} className="border border-gray-600 rounded overflow-hidden">
-                        <div className="w-full flex justify-between items-center p-3 bg-gray-700 hover:bg-gray-600 transition">
-                          <div className="flex items-center gap-3">
-                            <button onClick={(e) => { e.stopPropagation(); toggleSeasonSelection(seasonInt, !allSelected); }} className="text-white hover:text-blue-300">
-                              {allSelected ? <CheckSquare size={18} /> : <Square size={18} />}
-                            </button>
-                            <button onClick={() => setExpandedSeason(expandedSeason === seasonInt ? null : seasonInt)} className="font-bold text-white flex-1 text-left">
-                              Season {seasonNum}
-                            </button>
-                          </div>
-                          <button onClick={() => setExpandedSeason(expandedSeason === seasonInt ? null : seasonInt)}>
-                            {expandedSeason === seasonInt ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                          </button>
-                        </div>
-                        {expandedSeason === seasonInt && (
-                          <div className="p-3 space-y-3 bg-gray-800">
-                            {episodesBySeason[seasonNum].map(ep => (
-                              <div key={`${ep.season}-${ep.num}`} className={`p-3 rounded border ${ep.isSelected ? 'bg-gray-700 border-gray-600' : 'bg-gray-800 border-gray-700 opacity-60'}`}>
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="flex items-start gap-3">
-                                    <button onClick={() => toggleEpisodeSelection(ep.num, ep.season)} className="mt-1 text-white hover:text-blue-300">
-                                      {ep.isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                                    </button>
-                                    <span className="font-medium text-white">{ep.season ? `E${ep.num}` : `Episode ${ep.num}`}: {ep.title}</span>
-                                  </div>
-                                </div>
-                                {ep.isSelected && (
-                                  <div className="grid grid-cols-2 gap-3 text-xs pl-7">
-                                    <div><div className="text-gray-300 mb-1">Anthony</div><StarRating rating={ep.anthonyRating} maxStars={10} size={18} editable={currentUser === 'Anthony'} onRate={(r) => handleEpisodeRatingChange(ep.num, ep.season, 'Anthony', r)} /></div>
-                                    <div><div className="text-gray-300 mb-1">Pam</div><StarRating rating={ep.pamRating} maxStars={10} size={18} editable={currentUser === 'Pam'} onRate={(r) => handleEpisodeRatingChange(ep.num, ep.season, 'Pam', r)} /></div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+        {tv && (
+          <fieldset disabled={isDNF} className={`bg-gray-900 p-4 rounded-lg border border-gray-700 ${isDNF ? 'opacity-50' : ''}`}>
+            <legend className="sr-only">Episodes watched</legend>
+            <div className="flex justify-between items-center mb-3 gap-2 flex-wrap">
+              <h3 className="font-semibold text-white">Episodes watched ({selectedCount})</h3>
+              {episodes.length > 0 && (
+                <div className="flex gap-1 text-sm">
+                  <button type="button" onClick={() => setAllSelected(true)} className="text-blue-300 underline min-h-11 px-2">All</button>
+                  <button type="button" onClick={() => setAllSelected(false)} className="text-blue-300 underline min-h-11 px-2">None</button>
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Feature 9: Abandon (DNF) Checkbox */}
-        <div className="mt-4 p-3 bg-red-900/20 border border-red-900/50 rounded flex items-center gap-3">
-          <button 
-            onClick={() => setIsDNF(!isDNF)}
-            className={`w-6 h-6 flex items-center justify-center rounded border ${isDNF ? 'bg-red-600 border-red-500' : 'bg-transparent border-gray-500'}`}
-          >
-            {isDNF && <CheckSquare size={16} className="text-white" />}
-          </button>
-          <div className="flex-1" onClick={() => setIsDNF(!isDNF)}>
-            <span className="block text-white font-medium flex items-center gap-2">
-              <Ban size={16} className="text-red-400" />
-              We Abandoned This (DNF)
+            {loadingEpisodes ? (
+              <p className="text-center text-gray-200 py-4" role="status">Loading episodes…</p>
+            ) : episodes.length === 0 ? (
+              <div>
+                <p className="text-sm text-gray-200 mb-3">
+                  {loadError ? "Couldn't load episodes from TMDB." : 'No new aired episodes found.'}
+                </p>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <label htmlFor="manual-episodes" className="text-sm text-gray-200">Add episodes manually:</label>
+                  <input
+                    id="manual-episodes"
+                    type="number"
+                    min="0"
+                    max="50"
+                    inputMode="numeric"
+                    value={numEpisodes}
+                    onChange={(e) => setNumEpisodes(Math.min(50, parseInt(e.target.value, 10) || 0))}
+                    className="border border-gray-500 rounded-lg px-3 min-h-11 w-20 bg-gray-700 text-white"
+                  />
+                  <button type="button" onClick={addEpisodesManually} className="bg-blue-600 text-white px-4 min-h-11 rounded-lg hover:bg-blue-700">Add</button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {Object.keys(episodesBySeason).map((seasonKey) => {
+                  const season = Number(seasonKey);
+                  const list = episodesBySeason[seasonKey];
+                  const allSelected = list.every((ep) => ep.isSelected);
+                  const open = expandedSeason === season;
+                  return (
+                    <div key={season} className="border border-gray-600 rounded-lg overflow-hidden">
+                      <div className="flex items-center bg-gray-700">
+                        <label className="flex items-center gap-3 px-3 min-h-11 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={() => setSeasonSelected(season, !allSelected)}
+                            className="w-5 h-5 accent-blue-500"
+                          />
+                          <span className="sr-only">Select all of season {season}</span>
+                        </label>
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => setExpandedSeason(open ? null : season)}
+                          className="flex-1 flex justify-between items-center min-h-11 pr-3 font-bold text-white text-left"
+                        >
+                          Season {season}
+                          {open ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+                        </button>
+                      </div>
+                      {open && (
+                        <ul className="p-2 space-y-2 bg-gray-800">
+                          {list.map((ep) => (
+                            <li key={`${ep.season}-${ep.num}`} className={`p-2 rounded-lg flex items-center gap-2 ${ep.isSelected ? 'bg-gray-700' : 'bg-gray-800'}`}>
+                              <label className="flex items-center gap-3 flex-1 min-w-0 min-h-11 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={ep.isSelected}
+                                  onChange={() => updateEpisode(ep, { isSelected: !ep.isSelected })}
+                                  className="w-5 h-5 accent-blue-500 shrink-0"
+                                />
+                                <span className="text-white truncate">E{ep.num}: {ep.title}</span>
+                              </label>
+                              {ep.isSelected && (
+                                <RatingSelect
+                                  label={`Your rating for season ${ep.season} episode ${ep.num}`}
+                                  value={ep[myField] || 0}
+                                  onChange={(value) => updateEpisode(ep, { [myField]: value })}
+                                />
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </fieldset>
+        )}
+
+        <label className="p-3 bg-red-900/30 border border-red-800 rounded-lg flex items-center gap-3 cursor-pointer min-h-11">
+          <input type="checkbox" checked={isDNF} onChange={(e) => setIsDNF(e.target.checked)} className="w-5 h-5 accent-red-500" />
+          <span className="flex-1">
+            <span className="flex items-center gap-2 text-white font-medium">
+              <Ban size={16} aria-hidden="true" className="text-red-300" /> We abandoned this (DNF)
             </span>
-            <span className="text-xs text-gray-400">Moves to history but marked as unfinished.</span>
-          </div>
-        </div>
+            <span className="text-xs text-gray-200">Moves to history, marked as unfinished.</span>
+          </span>
+        </label>
 
-        <button 
-          onClick={() => onSubmit(anthonyRating, pamRating, episodes, isDNF)} 
-          className={`w-full mt-6 py-3 rounded-lg font-medium transition ${isDNF ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className={`w-full min-h-12 rounded-lg font-semibold text-white disabled:opacity-60 ${isDNF ? 'bg-red-700 hover:bg-red-800' : 'bg-green-700 hover:bg-green-800'}`}
         >
-          {isDNF ? 'Save as Abandoned' : 'Save & Mark as Watched'}
+          {saving ? 'Saving…' : isDNF ? 'Save as abandoned' : 'Save & mark as watched'}
         </button>
       </div>
-    </div>
+    </Modal>
   );
 };
 

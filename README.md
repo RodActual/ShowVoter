@@ -53,12 +53,7 @@ Configuration
    ```
    PORT=4000
    TMDB_API_KEY=your_tmdb_api_key
-   APP_TOKEN=                # optional shared secret, see "Securing it" below
-   ```
-
- * Frontend (only needed if you set `APP_TOKEN`): copy `.env.example` to `.env` and set the same value:
-   ```
-   VITE_APP_TOKEN=same_value_as_server_APP_TOKEN
+   APP_PASSWORD=             # shared sign-in password, see "Securing it" below
    ```
 
 Running the App (development)
@@ -83,15 +78,29 @@ Open http://localhost:4000 (or whatever `PORT` you configured).
 To keep it running, use a process manager like `pm2` or a systemd service, or put it behind a reverse proxy (e.g. Caddy or nginx) for HTTPS.
 
 Securing it
-If the server is only reachable on your home network, you can leave `APP_TOKEN` blank. If you expose it to the internet, set `APP_TOKEN` to a long random value in `server/.env` and the matching `VITE_APP_TOKEN` in the frontend `.env` before building — every API and WebSocket request will then require that shared secret.
+Set `APP_PASSWORD` in `server/.env` before exposing the server to the internet. The app then shows a sign-in screen; a correct password sets an HttpOnly session cookie that lasts a year on that device. Every API and WebSocket request needs that cookie and must come from the app's own origin. Changing `APP_PASSWORD` signs every device out. Wrong passwords are limited to 5 per minute per IP.
+
+Leaving `APP_PASSWORD` blank disables sign-in; only do that if the server is reachable from your home network alone. Serve it over HTTPS (for example behind Caddy) so the password and cookie aren't sent in clear text.
 
 Data & Backups
-All shared list data lives in `server/data.sqlite`. Back it up like any file — there's no external database to manage.
+All shared list data lives in `server/data.sqlite`. Make a consistent copy any time, even while the server runs:
+```
+npm --prefix server run backup                   # writes server/backups/data-<timestamp>.sqlite
+npm --prefix server run backup -- /mnt/usb/wt.sqlite
+```
+Schedule it (cron, Task Scheduler) and keep copies off the machine. To restore, stop the server and copy a backup over `server/data.sqlite`. Deleting a title in the app can be undone for a few seconds from the toast.
+
+Checks
+```
+npm run lint      # ESLint for src/ and server/
+npm test          # server API tests (starts the real server on a random port)
+```
 
 Project Structure
 ```
 server/
 ├── index.js           # Express API, WebSocket broadcast, TMDB proxy
+├── auth.js            # Password login, session cookie, same-origin checks
 ├── db.js              # SQLite setup
 └── data.sqlite        # Created automatically on first run
 src/
@@ -104,16 +113,21 @@ src/
 │   │   └── StarRating.jsx
 │   └── modals/          # Popups for actions
 │       ├── AddModal.jsx
+│       ├── LoginScreen.jsx
 │       ├── RatingModal.jsx
+│       ├── SettingsModal.jsx
+│       ├── StatsModal.jsx
+│       ├── TrailerModal.jsx
 │       └── UserSelectModal.jsx
 ├── services/            # API & data logic
 │   ├── api.js           # REST + WebSocket client for the self-hosted server
 │   └── tmdbService.js
+├── users.js             # Stable user keys (user1/user2), names, rating fields
 └── WatchTogether.jsx    # Main Controller
 ```
 
 User Roles
-The app is currently hardcoded for two users (e.g., "Anthony" and "Pam"), configurable from the in-app Settings panel (names and colors). This is a simple local profile switcher, not a real authentication system.
+The app has two users with stable ids (`user1`, `user2`). Names and colors are set in the in-app Settings panel and shared across devices through the server. The "Who's watching?" picker is a profile switcher on top of the shared password, not a per-person login.
 
 Contributing
  * Fork the Project

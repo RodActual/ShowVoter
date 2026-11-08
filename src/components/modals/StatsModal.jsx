@@ -1,108 +1,69 @@
 import React from 'react';
-import { X, Trophy, TrendingUp, Frown, Film } from 'lucide-react';
+import { Trophy, Frown, Film } from 'lucide-react';
+import Modal from '../common/Modal';
+import { DEFAULT_SETTINGS, userColor, userName } from '../../users';
 
-const StatsModal = ({ watched, onClose }) => {
-  const calculateStats = () => {
-    if (!watched || watched.length === 0) return null;
-
-    let anthonyTotal = 0, pamTotal = 0;
-    let anthonyCount = 0, pamCount = 0;
-    let anthonyLow = 0, pamLow = 0;
-    let totalItems = watched.length;
-    let dnfCount = watched.filter(i => i.status === 'DNF').length;
-
-    watched.forEach(item => {
-      // Don't count DNF in averages
-      if (item.status === 'DNF') return;
-
-      if (item.anthonyRating > 0) {
-        anthonyTotal += item.anthonyRating;
-        anthonyCount++;
-        if (item.anthonyRating <= 4) anthonyLow++;
-      }
-      if (item.pamRating > 0) {
-        pamTotal += item.pamRating;
-        pamCount++;
-        if (item.pamRating <= 4) pamLow++;
-      }
-    });
-
+function calculateStats(watched) {
+  if (!watched || watched.length === 0) return null;
+  const finished = watched.filter((i) => i.status !== 'DNF');
+  const stat = (field) => {
+    const rated = finished.map((i) => i[field] || 0).filter((r) => r > 0);
     return {
-      anthonyAvg: anthonyCount ? (anthonyTotal / anthonyCount).toFixed(1) : "0.0",
-      pamAvg: pamCount ? (pamTotal / pamCount).toFixed(1) : "0.0",
-      anthonyCritic: anthonyLow,
-      pamCritic: pamLow,
-      totalItems,
-      dnfCount
+      avg: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0,
+      low: rated.filter((r) => r <= 4).length
     };
   };
+  return {
+    user1: stat('anthonyRating'),
+    user2: stat('pamRating'),
+    finished: finished.length,
+    abandoned: watched.length - finished.length
+  };
+}
 
-  const stats = calculateStats();
+const StatsModal = ({ watched, settings = DEFAULT_SETTINGS, onClose }) => {
+  const name1 = userName(settings, 'user1');
+  const name2 = userName(settings, 'user2');
+  const stats = calculateStats(watched);
+  const winner = (a, b) => (a > b ? name1 : b > a ? name2 : 'Tie');
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full border border-gray-700 relative shadow-xl">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white">
-          <X size={24} />
-        </button>
-        
-        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-          <TrendingUp className="text-blue-400" /> Couple Stats
-        </h2>
+    <Modal title="Couple stats" onClose={onClose} maxWidth="max-w-lg">
+      {!stats ? (
+        <div className="text-center py-8 text-gray-200">
+          <Film size={48} aria-hidden="true" className="mx-auto mb-3 opacity-40" />
+          <p>Watch some shows to see your stats.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <dl className="grid grid-cols-2 gap-4 bg-gray-700 p-4 rounded-lg text-center">
+            {['user1', 'user2'].map((key) => (
+              <div key={key}>
+                <dd className="text-3xl font-bold text-white tabular-nums">{stats[key].avg.toFixed(1)}</dd>
+                <dt className="text-xs text-gray-200 uppercase tracking-wider mt-1 flex items-center justify-center gap-1">
+                  <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ backgroundColor: userColor(settings, key) }} />
+                  {userName(settings, key)}'s average
+                </dt>
+              </div>
+            ))}
+          </dl>
 
-        {!stats ? (
-          <div className="text-center py-8 text-gray-400">
-            <Film size={48} className="mx-auto mb-3 opacity-20" />
-            <p>Watch some shows to see your stats!</p>
+          <div className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-700">
+            <span className="flex items-center gap-2 text-yellow-300 font-bold"><Trophy size={18} aria-hidden="true" /> The nicest</span>
+            <span className="text-white font-medium">{winner(stats.user1.avg, stats.user2.avg)}</span>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Averages */}
-            <div className="grid grid-cols-2 gap-4 bg-gray-700 p-4 rounded-lg">
-              <div className="text-center border-r border-gray-600">
-                <div className="text-3xl font-bold text-blue-400">{stats.anthonyAvg}</div>
-                <div className="text-xs text-gray-300 uppercase tracking-wider mt-1">Ant's Avg</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-pink-400">{stats.pamAvg}</div>
-                <div className="text-xs text-gray-300 uppercase tracking-wider mt-1">Pam's Avg</div>
-              </div>
-            </div>
-
-            {/* Fun Badges */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700">
-                <div className="flex items-center gap-2 text-yellow-400">
-                  <Trophy size={18} /> <span className="font-bold">The Nicest</span>
-                </div>
-                <span className="text-white font-medium">
-                  {parseFloat(stats.anthonyAvg) > parseFloat(stats.pamAvg) ? 'Anthony' : parseFloat(stats.anthonyAvg) < parseFloat(stats.pamAvg) ? 'Pam' : 'Tie!'}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700">
-                <div className="flex items-center gap-2 text-red-400">
-                  <Frown size={18} /> <span className="font-bold">The Critic</span>
-                </div>
-                <div className="text-sm text-gray-400 text-right">
-                  <span className="block text-white font-medium">
-                    {stats.anthonyCritic > stats.pamCritic ? 'Anthony' : stats.pamCritic > stats.anthonyCritic ? 'Pam' : 'Tie!'}
-                  </span>
-                  <span className="text-xs opacity-75">
-                    (Ratings ≤ 4)
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between text-xs text-gray-500 pt-4 border-t border-gray-700">
-              <span>Total Watched: <strong className="text-gray-300">{stats.totalItems}</strong></span>
-              <span>Abandoned: <strong className="text-gray-300">{stats.dnfCount}</strong></span>
-            </div>
+          <div className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-700">
+            <span className="flex items-center gap-2 text-red-300 font-bold"><Frown size={18} aria-hidden="true" /> The critic <span className="text-xs font-normal text-gray-200">(ratings ≤ 4)</span></span>
+            <span className="text-white font-medium">{winner(stats.user1.low, stats.user2.low)}</span>
           </div>
-        )}
-      </div>
-    </div>
+
+          <dl className="flex justify-between text-sm text-gray-200 pt-3 border-t border-gray-700">
+            <div><dt className="inline">Finished: </dt><dd className="inline font-bold text-white">{stats.finished}</dd></div>
+            <div><dt className="inline">Abandoned: </dt><dd className="inline font-bold text-white">{stats.abandoned}</dd></div>
+          </dl>
+        </div>
+      )}
+    </Modal>
   );
 };
 

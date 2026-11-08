@@ -1,7 +1,7 @@
 // src/services/tmdbService.js
 
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-const APP_TOKEN = import.meta.env.VITE_APP_TOKEN || '';
+import { UNAUTHORIZED_EVENT } from './api';
 
 const SERVICE_MAPPING = {
   8: 'Netflix',
@@ -12,8 +12,6 @@ const SERVICE_MAPPING = {
   350: 'Apple TV+',
   531: 'Paramount+',
   387: 'Peacock',
-  Apple: 'Apple TV+',
-  HBO: 'Max'
 };
 
 async function tmdbProxy(path, params = {}) {
@@ -22,25 +20,24 @@ async function tmdbProxy(path, params = {}) {
     if (value !== undefined && value !== null) url.searchParams.set(key, value);
   });
 
-  const res = await fetch(url, {
-    headers: APP_TOKEN ? { Authorization: `Bearer ${APP_TOKEN}` } : {}
-  });
+  const res = await fetch(url, { credentials: 'same-origin' });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (!res.ok) throw new Error(`TMDB proxy error (${res.status})`);
   return res.json();
 }
 
 export const tmdbService = {
+  // Throws on failure so the caller can tell "no matches" from "search failed".
   async search(query) {
     if (!query.trim()) return [];
 
-    try {
-      const data = await tmdbProxy('search/multi', { query, include_adult: false });
+    const data = await tmdbProxy('search/multi', { query, include_adult: false });
 
-      return data.results
+    return (data.results || [])
         .filter(item => item.media_type === 'movie' || item.media_type === 'tv')
         .slice(0, 10)
         .map(item => ({
-          id: item.id,
+          id: `${item.media_type}-${item.id}`, // TMDB movie and TV ids overlap
           tmdbId: item.id,
           title: item.media_type === 'movie' ? item.title : item.name,
           type: item.media_type === 'movie' ? 'Movie' : 'TV Show',
@@ -55,10 +52,6 @@ export const tmdbService = {
           rating: item.vote_average ? item.vote_average.toFixed(1) : null,
           mediaType: item.media_type
         }));
-    } catch (error) {
-      console.error('TMDB search error:', error);
-      return [];
-    }
   },
 
   async getStreamingProviders(tmdbId, mediaType) {
@@ -103,7 +96,10 @@ export const tmdbService = {
         runtime: data.runtime || (data.episode_run_time ? data.episode_run_time[0] : null),
         genres: data.genres?.map(g => g.name).join(', '),
         numberOfSeasons: data.number_of_seasons,
-        numberOfEpisodes: data.number_of_episodes
+        numberOfEpisodes: data.number_of_episodes,
+        lastEpisodeToAir: data.last_episode_to_air
+          ? { season: data.last_episode_to_air.season_number, num: data.last_episode_to_air.episode_number }
+          : null
       };
     } catch (error) {
       console.error('Error fetching details:', error);
