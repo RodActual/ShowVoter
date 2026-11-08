@@ -1,6 +1,5 @@
 import React from 'react';
 import { Trophy, Frown, Film } from 'lucide-react';
-import Modal from '../common/Modal';
 import { DEFAULT_SETTINGS, userColor, userName } from '../../users';
 
 function calculateStats(watched) {
@@ -21,14 +20,16 @@ function calculateStats(watched) {
   };
 }
 
-const StatsModal = ({ watched, settings = DEFAULT_SETTINGS, onClose }) => {
+// Stats tab: averages, nicest/critic, finished vs abandoned, plus the To Watch backlog.
+const StatsView = ({ watched, toWatchCount = 0, settings = DEFAULT_SETTINGS }) => {
   const name1 = userName(settings, 'user1');
   const name2 = userName(settings, 'user2');
   const stats = calculateStats(watched);
   const winner = (a, b) => (a > b ? name1 : b > a ? name2 : 'Tie');
 
   return (
-    <Modal title="Couple stats" onClose={onClose} maxWidth="max-w-lg">
+    <section aria-labelledby="stats-heading">
+      <h2 id="stats-heading" className="text-xl font-bold text-white mb-4">Couple stats</h2>
       {!stats ? (
         <div className="text-center py-8 text-gray-200">
           <Film size={48} aria-hidden="true" className="mx-auto mb-3 opacity-40" />
@@ -36,14 +37,14 @@ const StatsModal = ({ watched, settings = DEFAULT_SETTINGS, onClose }) => {
         </div>
       ) : (
         <div className="space-y-4">
-          <dl className="grid grid-cols-2 gap-4 bg-gray-700 p-4 rounded-lg text-center">
+          <dl className="grid grid-cols-2 gap-4 bg-gray-800 p-4 rounded-xl text-center border border-gray-700">
             {['user1', 'user2'].map((key) => (
-              <div key={key}>
-                <dd className="text-3xl font-bold text-white tabular-nums">{stats[key].avg.toFixed(1)}</dd>
+              <div key={key} className="flex flex-col-reverse">
                 <dt className="text-xs text-gray-200 uppercase tracking-wider mt-1 flex items-center justify-center gap-1">
                   <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ backgroundColor: userColor(settings, key) }} />
                   {userName(settings, key)}'s average
                 </dt>
+                <dd className="text-3xl font-bold text-white tabular-nums">{stats[key].avg.toFixed(1)}</dd>
               </div>
             ))}
           </dl>
@@ -60,11 +61,12 @@ const StatsModal = ({ watched, settings = DEFAULT_SETTINGS, onClose }) => {
           <dl className="flex justify-between text-sm text-gray-200 pt-3 border-t border-gray-700">
             <div><dt className="inline">Finished: </dt><dd className="inline font-bold text-white">{stats.finished}</dd></div>
             <div><dt className="inline">Abandoned: </dt><dd className="inline font-bold text-white">{stats.abandoned}</dd></div>
+            <div><dt className="inline">To watch: </dt><dd className="inline font-bold text-white">{toWatchCount}</dd></div>
           </dl>
         </div>
       )}
-    </Modal>
+    </section>
   );
 };
 
-export default StatsModal;
+export default StatsView;
