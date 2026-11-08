@@ -20,8 +20,9 @@ function metaLine(item, mode, watchedEpisodes) {
     const days = daysUntil(item.releaseDate);
     if (days > 0) parts.push(days === 1 ? 'out tomorrow' : `out in ${days} days`);
     else if (!isMovie(item)) parts.push(`next ${upNextGuess(item, watchedEpisodes)}`);
-  } else if (item.watchedDate) {
-    parts.push(item.watchedDate);
+  } else {
+    if (item.status === 'In progress') parts.push('in progress');
+    if (item.watchedDate) parts.push(item.watchedDate);
   }
   return parts.filter(Boolean).join(' · ');
 }

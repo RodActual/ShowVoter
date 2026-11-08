@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { Check, CheckCircle2 } from 'lucide-react';
 import tmdbService from '../../services/tmdbService';
 import { RatingSelect } from '../common/RatingPicker';
 import { lastWatchedEpisode, localDateString, parseLocalDate } from '../../titles';
 
 const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-const EpisodeRow = ({ ep, logged, today, ratingProps }) => {
+const EpisodeRow = ({ ep, logged, today, ratingProps, onLog }) => {
   const [open, setOpen] = useState(false);
   const aired = ep.airDate && ep.airDate <= today;
   const long = (ep.overview || '').length > 140;
@@ -27,6 +27,16 @@ const EpisodeRow = ({ ep, logged, today, ratingProps }) => {
           </p>
         </div>
         {logged && ratingProps && <RatingSelect {...ratingProps} />}
+        {!logged && aired && onLog && (
+          <button
+            type="button"
+            onClick={() => onLog(ep)}
+            aria-label={`Mark episode ${ep.num}, ${ep.title}, as watched`}
+            className="shrink-0 min-h-11 px-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold inline-flex items-center gap-1"
+          >
+            <Check size={16} aria-hidden="true" /> Watched
+          </button>
+        )}
       </div>
       {ep.overview ? (
         <>
@@ -51,7 +61,7 @@ const EpisodeRow = ({ ep, logged, today, ratingProps }) => {
 
 // Read-only browser of a show's seasons and episodes, with overviews. Logged episodes are marked;
 // on Watched shows your episode rating can be changed inline. Never marks anything watched.
-const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatingField, partnerName, onRateEpisode }) => {
+const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatingField, partnerName, onRateEpisode, onLogEpisode }) => {
   const [seasonCount, setSeasonCount] = useState(null);
   const [season, setSeason] = useState(() => lastWatchedEpisode(loggedEpisodes)?.season || 1);
   const [episodes, setEpisodes] = useState(null); // null = loading
@@ -107,9 +117,21 @@ const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatin
       {error && <p className="text-sm text-red-200">Couldn't load season {season}.</p>}
       {episodes && (
         <>
-          <p className="text-xs text-gray-200 mb-2">
-            Season {season} · {episodes.length} episodes{loggedCount ? ` · ${loggedCount} watched` : ''}
-          </p>
+          <div className="mb-3">
+            <p className="text-xs text-gray-200 mb-1">
+              Season {season} · {loggedCount} of {episodes.length} watched
+            </p>
+            <div
+              role="progressbar"
+              aria-label={`Season ${season} progress`}
+              aria-valuemin={0}
+              aria-valuemax={episodes.length}
+              aria-valuenow={Math.min(loggedCount, episodes.length)}
+              className="h-2 rounded-full bg-gray-700 overflow-hidden"
+            >
+              <div className="h-full bg-blue-500" style={{ width: `${episodes.length ? Math.min(100, (loggedCount / episodes.length) * 100) : 0}%` }} />
+            </div>
+          </div>
           <ul className="space-y-2">
             {episodes.map((ep) => {
               const logged = loggedFor(ep.num);
@@ -119,6 +141,7 @@ const EpisodeBrowser = ({ item, loggedEpisodes = [], myRatingField, partnerRatin
                   ep={ep}
                   logged={logged}
                   today={today}
+                  onLog={onLogEpisode ? (e) => onLogEpisode({ season, num: e.num, title: e.title }) : undefined}
                   ratingProps={logged && onRateEpisode ? {
                     label: `Your rating for season ${season} episode ${ep.num}${logged[partnerRatingField] ? ` (${partnerName}: ${logged[partnerRatingField]}/10)` : ''}`,
                     value: logged[myRatingField] || 0,

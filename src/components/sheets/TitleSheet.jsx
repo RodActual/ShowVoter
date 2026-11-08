@@ -12,24 +12,25 @@ import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
 
 // Exact "up next" for TV, checked against TMDB season lengths (only while the sheet is open).
+// Returns null while loading, { season, num } for the next episode, or 'done' when all aired episodes are logged.
 function useUpNext(item, episodes, enabled) {
-  const [text, setText] = useState(null);
+  const [next, setNext] = useState(null);
   useEffect(() => {
     if (!enabled || isMovie(item) || !item.tmdbId) return undefined;
     let cancelled = false;
-    const set = (t) => { if (!cancelled) setText(t); };
+    const set = (v) => { if (!cancelled) setNext(v); };
     (async () => {
       const last = lastWatchedEpisode(episodes || []);
-      if (!last) return set('Up next: S1 E1');
+      if (!last) return set({ season: 1, num: 1 });
       const season = await tmdbService.getSeasonDetails(item.tmdbId, last.season);
-      if (!season?.episodes) return set(`Up next: S${last.season} E${last.num + 1}?`);
-      if (last.num < season.episodes.length) return set(`Up next: S${last.season} E${last.num + 1}`);
-      const next = await tmdbService.getSeasonDetails(item.tmdbId, last.season + 1);
-      set(next?.episodes?.length ? `Up next: S${last.season + 1} E1` : 'All aired episodes watched');
+      if (!season?.episodes) return set({ season: last.season, num: last.num + 1 });
+      if (last.num < season.episodes.length) return set({ season: last.season, num: last.num + 1 });
+      const nextSeason = await tmdbService.getSeasonDetails(item.tmdbId, last.season + 1);
+      set(nextSeason?.episodes?.length ? { season: last.season + 1, num: 1 } : 'done');
     })();
     return () => { cancelled = true; };
   }, [item, episodes, enabled]);
-  return text;
+  return next;
 }
 
 const Section = ({ title, children }) => (
@@ -50,6 +51,8 @@ const TitleSheet = ({
   onMarkWatched,
   onSetRating,
   onSetEpisodeRating,
+  onLogEpisode,
+  onLogNextEpisode,
   onDelete,
   onPlayTrailer,
   isListed,
@@ -89,7 +92,9 @@ const TitleSheet = ({
           {mode === 'toWatch' && days > 0 && (
             <p className="font-bold text-yellow-300">{isMovie(item) ? 'In theaters' : 'Premieres'} {days === 1 ? 'tomorrow' : `in ${days} days`}</p>
           )}
-          {mode === 'toWatch' && upNext && <p className="font-semibold text-blue-200">{upNext}</p>}
+          {mode === 'toWatch' && upNext && (
+            <p className="font-semibold text-blue-200">{upNext === 'done' ? 'All aired episodes watched' : `Up next: S${upNext.season} E${upNext.num}`}</p>
+          )}
           {mode === 'watched' && (isDNF
             ? <p className="inline-flex items-center gap-1 font-bold text-red-200"><Ban size={14} aria-hidden="true" /> Abandoned</p>
             : item.watchedDate && <p>Watched {item.watchedDate}</p>)}
@@ -124,12 +129,23 @@ const TitleSheet = ({
               {userName(settings, partner)}: <PriorityText value={item[priorityField(partner)] || 0} />
             </p>
           </Section>
+          {!isMovie(item) && item.tmdbId && upNext && upNext !== 'done' && (
+            <button
+              type="button"
+              onClick={() => onLogNextEpisode(item)}
+              className="w-full mt-5 min-h-12 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2"
+            >
+              <Check size={18} aria-hidden="true" /> Watched S{upNext.season} E{upNext.num}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onMarkWatched(item)}
-            className="w-full mt-5 min-h-12 rounded-lg bg-green-700 hover:bg-green-800 text-white font-semibold flex items-center justify-center gap-2"
+            className={`w-full min-h-12 rounded-lg font-semibold flex items-center justify-center gap-2 ${!isMovie(item) && item.tmdbId && upNext && upNext !== 'done'
+              ? 'mt-2 bg-gray-700 hover:bg-gray-600 text-white'
+              : 'mt-5 bg-green-700 hover:bg-green-800 text-white'}`}
           >
-            <Check size={18} aria-hidden="true" /> Mark as watched
+            <Check size={18} aria-hidden="true" /> {isMovie(item) ? 'Mark as watched' : 'Finished the show: rate it'}
           </button>
         </>
       )}
@@ -185,7 +201,8 @@ const TitleSheet = ({
             myRatingField={ratingField(currentUser)}
             partnerRatingField={ratingField(partner)}
             partnerName={userName(settings, partner)}
-            onRateEpisode={mode === 'watched' && !isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
+            onRateEpisode={!isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
+            onLogEpisode={!isDNF && onLogEpisode ? (ep) => onLogEpisode(item, ep) : undefined}
           />
         </Section>
       )}

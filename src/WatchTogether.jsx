@@ -20,7 +20,8 @@ import SettingsModal from './components/modals/SettingsModal';
 import TitlePreview from './components/modals/TitlePreview';
 import { useToast } from './components/common/Toast';
 import { DEFAULT_SETTINGS, USER_KEYS, averageRating, priorityField, ratingField, resolveUserKey, userName } from './users';
-import { isMovie, lastWatchedEpisode, mediaTypeOf, sameTitle } from './titles';
+import { isMovie, lastWatchedEpisode, localDateString, mediaTypeOf, sameTitle } from './titles';
+import { isCaughtUp, mergeEpisode, nextAfter, removeEpisode } from './progress';
 import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists';
 
 const NO_FILTERS = { query: '', kind: 'all', services: [] };
@@ -342,6 +343,81 @@ const WatchTogether = () => {
     return attempt(() => api.setDoc('watched', item.id, { episodes, [field]: avg || item[field] || 0 }), "Couldn't save the episode rating.");
   };
 
+  // --- Episode progress (#38) -------------------------------------------------
+  // The Watched entry that holds a show's logged episodes (TV shows in progress live on both lists).
+  const progressEntry = (item) => watched.find((w) => w.id === item.id) || watched.find((w) => sameTitle(w, item));
+
+  // Works out the next episode to log from TMDB season lengths. Returns { season, num, title } or null.
+  const findNextEpisode = async (item) => {
+    const last = lastWatchedEpisode(progressEntry(item)?.episodes || []);
+    let target;
+    if (!last) {
+      target = { season: 1, num: 1 };
+    } else {
+      const season = await tmdbService.getSeasonDetails(item.tmdbId, last.season);
+      const nextSeason = season?.episodes && last.num >= season.episodes.length
+        ? await tmdbService.getSeasonDetails(item.tmdbId, last.season + 1)
+        : null;
+      target = nextAfter(last, season?.episodes?.length || last.num + 1, Boolean(nextSeason?.episodes?.length));
+    }
+    if (!target) return null;
+    const info = (await tmdbService.getSeasonDetails(item.tmdbId, target.season))?.episodes?.find((e) => e.num === target.num);
+    return { ...target, title: info?.title || `Episode ${target.num}`, airDate: info?.airDate || null };
+  };
+
+  // Logs one episode as watched (ratings can be added later), with Undo, and offers Finish when caught up.
+  const handleLogEpisode = async (item, ep) => {
+    const entry = progressEntry(item);
+    const before = entry?.episodes || [];
+    const record = { season: ep.season, num: ep.num, title: ep.title || `Episode ${ep.num}`, anthonyRating: 0, pamRating: 0 };
+    const episodes = mergeEpisode(before, record);
+    const id = entry?.id || api.newId();
+    const doc = entry
+      ? { episodes, watchedDate: today() }
+      : {
+        title: item.title, type: item.type || 'TV Show', mediaType: 'tv', tmdbId: item.tmdbId, service: item.service || 'Other',
+        posterPath: item.posterPath || null, overview: item.overview || '', rating: item.rating || null, year: item.year || null,
+        anthonyRating: 0, pamRating: 0, status: 'In progress', watchedDate: today(), episodes
+      };
+    if (!(await attempt(() => api.setDoc('watched', id, doc), "Couldn't log the episode."))) return;
+
+    const undo = () => attempt(
+      () => (entry ? api.setDoc('watched', id, { episodes: removeEpisode(episodes, record) }) : api.deleteDoc('watched', id)),
+      "Couldn't undo."
+    );
+    const details = await tmdbService.getDetails(item.tmdbId, 'tv');
+    const toWatchItem = toWatch.find((t) => sameTitle(t, item));
+    if (toWatchItem && isCaughtUp(record, details?.lastEpisodeToAir)) {
+      toast({
+        message: `S${record.season} E${record.num} logged. You're caught up on ${item.title}!`,
+        tone: 'success',
+        action: { label: 'Finish', onClick: () => handleMarkWatched(toWatchItem) },
+        duration: 9000
+      });
+    } else {
+      toast({ message: `Logged S${record.season} E${record.num} of ${item.title}`, tone: 'success', action: { label: 'Undo', onClick: undo }, duration: 7000 });
+    }
+  };
+
+  const handleLogNextEpisode = async (item) => {
+    const next = await findNextEpisode(item);
+    if (!next) {
+      toast({ message: `You're caught up on ${item.title}.` });
+      return;
+    }
+    if (next.airDate && next.airDate > localDateString()) {
+      toast({ message: `S${next.season} E${next.num} hasn't aired yet (${next.airDate}).` });
+      return;
+    }
+    await handleLogEpisode(item, next);
+  };
+
+  // Rating an episode from a To Watch sheet edits the show's Watched entry.
+  const handleRateEpisode = (item, episode, value) => {
+    const entry = progressEntry(item);
+    return entry ? handleSetEpisodeRating(entry, episode, value) : undefined;
+  };
+
   // Tonight's pick: keep the current pick while it's still a candidate, else the best one.
   const { pool: tonightPool, shared: tonightShared } = useMemo(() => pickPool(toWatch), [toWatch]);
   const tonight = tonightPool.find((i) => i.id === tonightId) || tonightPool[0] || null;
@@ -373,7 +449,8 @@ const WatchTogether = () => {
     <li key={item.id}>
       <SwipeRow
         onSwipeLeft={() => handleDelete(activeTab, item)}
-        onSwipeRight={isToWatch ? () => handleMarkWatched(item) : undefined}
+        onSwipeRight={isToWatch ? () => (isMovie(item) ? handleMarkWatched(item) : handleLogNextEpisode(item)) : undefined}
+        rightLabel={isToWatch && !isMovie(item) ? 'Next episode' : 'Watched'}
       >
         <TitleRow
           item={item}
@@ -534,7 +611,9 @@ const WatchTogether = () => {
           onSetPriority={handleSetPriority}
           onMarkWatched={handleMarkWatched}
           onSetRating={handleSetRating}
-          onSetEpisodeRating={handleSetEpisodeRating}
+          onSetEpisodeRating={sheet.mode === 'toWatch' ? handleRateEpisode : handleSetEpisodeRating}
+          onLogEpisode={handleLogEpisode}
+          onLogNextEpisode={handleLogNextEpisode}
           onDelete={(i) => handleDelete(sheet.mode, i)}
           onPlayTrailer={handlePlayTrailer}
           isListed={isListed}
