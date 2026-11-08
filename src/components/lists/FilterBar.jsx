@@ -4,7 +4,7 @@ import { Search, X } from 'lucide-react';
 const chip = (on) => `shrink-0 min-h-11 min-w-11 px-3 rounded-full text-sm font-semibold border ${on ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-100 hover:bg-gray-700'}`;
 
 // Search box, Movie/TV chips, service chips and sort. Chips scroll sideways on narrow screens.
-const FilterBar = ({ filters, onChange, services, sort, sortOptions, onSortChange, listLabel }) => {
+const FilterBar = ({ filters, onChange, services, sort, sortOptions, onSortChange, listLabel, showOurs }) => {
   const set = (patch) => onChange({ ...filters, ...patch });
   const toggleService = (s) => set({
     services: filters.services.includes(s) ? filters.services.filter((x) => x !== s) : [...filters.services, s]
@@ -47,6 +47,11 @@ const FilterBar = ({ filters, onChange, services, sort, sortOptions, onSortChang
       </div>
 
       <div role="group" aria-label="Filters" className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+        {showOurs && (
+          <button type="button" aria-pressed={Boolean(filters.ours)} onClick={() => set({ ours: !filters.ours })} className={chip(Boolean(filters.ours))}>
+            On our services
+          </button>
+        )}
         {[['all', 'All'], ['movie', 'Movies'], ['tv', 'TV']].map(([value, label]) => (
           <button key={value} type="button" aria-pressed={filters.kind === value} onClick={() => set({ kind: value })} className={chip(filters.kind === value)}>
             {label}

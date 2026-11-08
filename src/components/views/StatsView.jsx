@@ -4,7 +4,8 @@ import { DEFAULT_SETTINGS, userName } from '../../users';
 
 function calculateStats(watched) {
   if (!watched || watched.length === 0) return null;
-  const finished = watched.filter((i) => i.status !== 'DNF');
+  const finished = watched.filter((i) => i.status !== 'DNF' && i.status !== 'In progress');
+  const inProgress = watched.filter((i) => i.status === 'In progress').length;
   const stat = (field) => {
     const rated = finished.map((i) => i[field] || 0).filter((r) => r > 0);
     return {
@@ -16,7 +17,8 @@ function calculateStats(watched) {
     user1: stat('anthonyRating'),
     user2: stat('pamRating'),
     finished: finished.length,
-    abandoned: watched.length - finished.length
+    abandoned: watched.filter((i) => i.status === 'DNF').length,
+    inProgress
   };
 }
 
@@ -57,9 +59,10 @@ const StatsView = ({ watched, toWatchCount = 0, settings = DEFAULT_SETTINGS }) =
             <span className="text-white font-medium">{winner(stats.user1.low, stats.user2.low)}</span>
           </div>
 
-          <dl className="flex justify-between text-sm text-gray-200 pt-3 border-t border-gray-700">
+          <dl className="grid grid-cols-2 gap-2 text-sm text-gray-200 pt-3 border-t border-gray-700">
             <div><dt className="inline">Finished: </dt><dd className="inline font-bold text-white">{stats.finished}</dd></div>
             <div><dt className="inline">Abandoned: </dt><dd className="inline font-bold text-white">{stats.abandoned}</dd></div>
+            <div><dt className="inline">In progress: </dt><dd className="inline font-bold text-white">{stats.inProgress}</dd></div>
             <div><dt className="inline">To watch: </dt><dd className="inline font-bold text-white">{toWatchCount}</dd></div>
           </dl>
         </div>

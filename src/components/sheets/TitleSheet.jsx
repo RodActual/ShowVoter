@@ -1,36 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Ban, Check, ExternalLink, Play, Star, Trash2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import { PriorityPicker, PriorityText } from '../common/PriorityRating';
 import RatingPicker, { RatingSelect } from '../common/RatingPicker';
-import tmdbService from '../../services/tmdbService';
 import EpisodeBrowser from './EpisodeBrowser';
 import MoreLikeThis from './MoreLikeThis';
+import WhereToWatch from './WhereToWatch';
+import useNextEpisode from '../../useNextEpisode';
 import { averageRating, priorityField, ratingField, resolveUserKey, userName } from '../../users';
-import { daysUntil, isMovie, lastWatchedEpisode } from '../../titles';
+import { daysUntil, isMovie } from '../../titles';
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
-
-// Exact "up next" for TV, checked against TMDB season lengths (only while the sheet is open).
-function useUpNext(item, episodes, enabled) {
-  const [text, setText] = useState(null);
-  useEffect(() => {
-    if (!enabled || isMovie(item) || !item.tmdbId) return undefined;
-    let cancelled = false;
-    const set = (t) => { if (!cancelled) setText(t); };
-    (async () => {
-      const last = lastWatchedEpisode(episodes || []);
-      if (!last) return set('Up next: S1 E1');
-      const season = await tmdbService.getSeasonDetails(item.tmdbId, last.season);
-      if (!season?.episodes) return set(`Up next: S${last.season} E${last.num + 1}?`);
-      if (last.num < season.episodes.length) return set(`Up next: S${last.season} E${last.num + 1}`);
-      const next = await tmdbService.getSeasonDetails(item.tmdbId, last.season + 1);
-      set(next?.episodes?.length ? `Up next: S${last.season + 1} E1` : 'All aired episodes watched');
-    })();
-    return () => { cancelled = true; };
-  }, [item, episodes, enabled]);
-  return text;
-}
 
 const Section = ({ title, children }) => (
   <section className="border-t border-gray-700 pt-4 mt-4">
@@ -50,15 +30,19 @@ const TitleSheet = ({
   onMarkWatched,
   onSetRating,
   onSetEpisodeRating,
+  onLogEpisode,
+  onLogNextEpisode,
   onDelete,
   onPlayTrailer,
   isListed,
-  onPreview
+  onPreview,
+  onUpdateService
 }) => {
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
   const episodes = mode === 'watched' ? item.episodes || [] : watchedEpisodes;
-  const upNext = useUpNext(item, episodes, mode === 'toWatch');
+  const nextEp = useNextEpisode(item, episodes, mode === 'toWatch');
+  const upNext = nextEp?.status === 'next' ? nextEp : nextEp?.status === 'done' ? 'done' : null;
   const days = daysUntil(item.releaseDate);
   const addedByKey = resolveUserKey(item.addedBy, settings);
   const searchLink = `https://www.google.com/search?q=${encodeURIComponent(`watch ${item.title} on ${item.service}`)}`;
@@ -89,7 +73,9 @@ const TitleSheet = ({
           {mode === 'toWatch' && days > 0 && (
             <p className="font-bold text-yellow-300">{isMovie(item) ? 'In theaters' : 'Premieres'} {days === 1 ? 'tomorrow' : `in ${days} days`}</p>
           )}
-          {mode === 'toWatch' && upNext && <p className="font-semibold text-blue-200">{upNext}</p>}
+          {mode === 'toWatch' && upNext && (
+            <p className="font-semibold text-blue-200">{upNext === 'done' ? 'All aired episodes watched' : `Up next: S${upNext.season} E${upNext.num}`}</p>
+          )}
           {mode === 'watched' && (isDNF
             ? <p className="inline-flex items-center gap-1 font-bold text-red-200"><Ban size={14} aria-hidden="true" /> Abandoned</p>
             : item.watchedDate && <p>Watched {item.watchedDate}</p>)}
@@ -124,12 +110,23 @@ const TitleSheet = ({
               {userName(settings, partner)}: <PriorityText value={item[priorityField(partner)] || 0} />
             </p>
           </Section>
+          {!isMovie(item) && item.tmdbId && upNext && upNext !== 'done' && (
+            <button
+              type="button"
+              onClick={() => onLogNextEpisode(item)}
+              className="w-full mt-5 min-h-12 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2"
+            >
+              <Check size={18} aria-hidden="true" /> Watched S{upNext.season} E{upNext.num}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onMarkWatched(item)}
-            className="w-full mt-5 min-h-12 rounded-lg bg-green-700 hover:bg-green-800 text-white font-semibold flex items-center justify-center gap-2"
+            className={`w-full min-h-12 rounded-lg font-semibold flex items-center justify-center gap-2 ${!isMovie(item) && item.tmdbId && upNext && upNext !== 'done'
+              ? 'mt-2 bg-gray-700 hover:bg-gray-600 text-white'
+              : 'mt-5 bg-green-700 hover:bg-green-800 text-white'}`}
           >
-            <Check size={18} aria-hidden="true" /> Mark as watched
+            <Check size={18} aria-hidden="true" /> {isMovie(item) ? 'Mark as watched' : 'Finished the show: rate it'}
           </button>
         </>
       )}
@@ -185,8 +182,15 @@ const TitleSheet = ({
             myRatingField={ratingField(currentUser)}
             partnerRatingField={ratingField(partner)}
             partnerName={userName(settings, partner)}
-            onRateEpisode={mode === 'watched' && !isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
+            onRateEpisode={!isDNF ? (ep, v) => onSetEpisodeRating(item, ep, v) : undefined}
+            onLogEpisode={!isDNF && onLogEpisode ? (ep) => onLogEpisode(item, ep) : undefined}
           />
+        </Section>
+      )}
+
+      {item.tmdbId && (
+        <Section title="Where to watch">
+          <WhereToWatch item={item} ourServices={settings.services || []} onUpdateService={mode === 'toWatch' ? onUpdateService : undefined} />
         </Section>
       )}
 

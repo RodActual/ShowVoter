@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems, upNextGuess } from './lists.js';
+import { filterItems, groupByMonth, hasActiveFilters, nextPick, pickPool, servicesOf, sortItems } from './lists.js';
 
 const items = [
   { id: 'a', title: 'Severance', mediaType: 'tv', service: 'Apple TV+', anthonyPriority: 3, pamPriority: 2, watchedDate: '2026-11-02', anthonyRating: 8, pamRating: 9 },
@@ -16,6 +16,12 @@ test('filters combine kind, service and text', () => {
   assert.deepStrictEqual(filterItems(items, { query: 'netflix' }).map((i) => i.id), ['c', 'd']);
   assert.strictEqual(hasActiveFilters({}), false);
   assert.strictEqual(hasActiveFilters({ query: ' x ' }), true);
+});
+
+test('ours filter keeps titles on our services', () => {
+  assert.deepStrictEqual(filterItems(items, { ours: true }, ['Netflix']).map((i) => i.id), ['c', 'd']);
+  assert.deepStrictEqual(filterItems(items, { ours: true }, []).map((i) => i.id), ['a', 'b', 'c', 'd']);
+  assert.strictEqual(hasActiveFilters({ ours: true }), true);
 });
 
 test('services are listed most common first', () => {
@@ -55,8 +61,3 @@ test('titles without a TMDB id never match each other', async () => {
   assert.strictEqual(sameTitle({ tmdbId: 1, mediaType: 'tv' }, { tmdbId: 1, mediaType: 'movie' }), false);
 });
 
-test('up next guess', () => {
-  assert.strictEqual(upNextGuess(items[1], []), null);
-  assert.strictEqual(upNextGuess(items[0], []), 'S1 E1');
-  assert.strictEqual(upNextGuess(items[0], [{ season: 1, num: 3 }, { season: 2, num: 1 }]), 'S2 E2');
-});

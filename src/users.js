@@ -6,7 +6,8 @@ export const USER_KEYS = ['user1', 'user2'];
 // Display names only; stored colors from older versions are ignored.
 export const DEFAULT_SETTINGS = {
   user1Name: 'Anthony',
-  user2Name: 'Pam'
+  user2Name: 'Pam',
+  services: [] // streaming services you subscribe to (names from STREAMING_SERVICES)
 };
 
 const LEGACY_DEFAULT_NAMES = { user1: 'Anthony', user2: 'Pam' };

@@ -90,10 +90,11 @@ export const tmdbService = {
 
       if (!usProviders) return [];
 
+      // kind: 'flatrate' (subscription), 'rent' or 'buy'; subscription first.
       const allProviders = [
-        ...(usProviders.flatrate || []),
-        ...(usProviders.rent || []),
-        ...(usProviders.buy || [])
+        ...(usProviders.flatrate || []).map((p) => ({ ...p, kind: 'flatrate' })),
+        ...(usProviders.rent || []).map((p) => ({ ...p, kind: 'rent' })),
+        ...(usProviders.buy || []).map((p) => ({ ...p, kind: 'buy' }))
       ];
 
       const uniqueProviders = [...new Map(allProviders.map(p => [p.provider_id, p])).values()];
@@ -101,6 +102,7 @@ export const tmdbService = {
       return uniqueProviders.map(provider => ({
         id: provider.provider_id,
         name: SERVICE_MAPPING[provider.provider_id] || provider.provider_name,
+        kind: provider.kind,
         logo: `${TMDB_IMAGE_BASE_URL}${provider.logo_path}`
       }));
     } catch (error) {

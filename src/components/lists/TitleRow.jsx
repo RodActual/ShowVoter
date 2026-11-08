@@ -3,7 +3,7 @@ import { Ban, ChevronRight } from 'lucide-react';
 import { PRIORITY_LABELS } from '../common/PriorityRating';
 import { averageRating, priorityField, ratingField, userName } from '../../users';
 import { daysUntil, isMovie } from '../../titles';
-import { upNextGuess } from '../../lists';
+import useNextEpisode from '../../useNextEpisode';
 
 const PRIORITY_CHIP = {
   0: 'bg-gray-700 text-gray-200',
@@ -14,20 +14,25 @@ const PRIORITY_CHIP = {
 
 const otherUser = (key) => (key === 'user1' ? 'user2' : 'user1');
 
-function metaLine(item, mode, watchedEpisodes) {
+function metaLine(item, mode, next, ourServices) {
   const parts = [item.service, isMovie(item) ? 'Movie' : 'TV'];
+  if (mode === 'toWatch' && ourServices?.length && !ourServices.includes(item.service)) parts.push('not on yours');
   if (mode === 'toWatch') {
     const days = daysUntil(item.releaseDate);
     if (days > 0) parts.push(days === 1 ? 'out tomorrow' : `out in ${days} days`);
-    else if (!isMovie(item)) parts.push(`next ${upNextGuess(item, watchedEpisodes)}`);
-  } else if (item.watchedDate) {
-    parts.push(item.watchedDate);
+    else if (next?.status === 'next') parts.push(`next S${next.season} E${next.num}`);
+    else if (next?.status === 'done') parts.push('caught up');
+  } else {
+    if (item.status === 'In progress') parts.push('in progress');
+    if (item.watchedDate) parts.push(item.watchedDate);
   }
   return parts.filter(Boolean).join(' · ');
 }
 
 // One compact, tappable row. Opens the detail sheet; all actions live there.
 const TitleRow = ({ item, mode, currentUser, settings, watchedEpisodes, highlighted, onOpen }) => {
+  const ourServices = settings.services || [];
+  const next = useNextEpisode(item, watchedEpisodes, mode === 'toWatch' && !isMovie(item));
   const partner = otherUser(currentUser);
   const isDNF = item.status === 'DNF';
 
@@ -71,7 +76,7 @@ const TitleRow = ({ item, mode, currentUser, settings, watchedEpisodes, highligh
         : <div aria-hidden="true" className="w-10 h-[60px] rounded-md shrink-0 bg-gray-700" />}
       <span className="flex-1 min-w-0">
         <span className="font-semibold text-white leading-snug line-clamp-1">{item.title}</span>
-        <span className="block text-xs text-gray-200 mt-0.5 truncate">{metaLine(item, mode, watchedEpisodes)}</span>
+        <span className="block text-xs text-gray-200 mt-0.5 truncate">{metaLine(item, mode, next, ourServices)}</span>
         {item.isNewEpisodes && (
           <span className="inline-block mt-1 text-[11px] font-bold bg-green-700 text-white px-1.5 py-0.5 rounded">New episodes</span>
         )}

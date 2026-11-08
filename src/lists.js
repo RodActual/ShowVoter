@@ -1,24 +1,26 @@
 // Pure list helpers: filtering, sorting, month grouping, Tonight's pick. No React, no I/O (unit-tested).
 import { averageRating } from './users.js';
-import { isMovie, lastWatchedEpisode } from './titles.js';
+import { isMovie } from './titles.js';
 
 const prioritySum = (i) => (i.anthonyPriority || 0) + (i.pamPriority || 0);
 const ratingAvg = (i) => averageRating(i.anthonyRating, i.pamRating);
 
 // filters: { query: string, kind: 'all' | 'movie' | 'tv', services: string[] }
-export function filterItems(items, { query = '', kind = 'all', services = [] } = {}) {
+// ours: only titles on `ourServices` (the services you subscribe to).
+export function filterItems(items, { query = '', kind = 'all', services = [], ours = false } = {}, ourServices = []) {
   const q = query.trim().toLowerCase();
   return items.filter((item) => {
     if (kind === 'movie' && !isMovie(item)) return false;
     if (kind === 'tv' && isMovie(item)) return false;
     if (services.length && !services.includes(item.service || 'Other')) return false;
+    if (ours && ourServices.length && !ourServices.includes(item.service)) return false;
     if (q && !`${item.title} ${item.service || ''}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
 
-export const hasActiveFilters = ({ query = '', kind = 'all', services = [] } = {}) =>
-  Boolean(query.trim()) || kind !== 'all' || services.length > 0;
+export const hasActiveFilters = ({ query = '', kind = 'all', services = [], ours = false } = {}) =>
+  Boolean(query.trim()) || kind !== 'all' || services.length > 0 || ours;
 
 // Distinct services on a list, most common first.
 export function servicesOf(items) {
@@ -72,11 +74,4 @@ export function nextPick(pool, currentId, random = Math.random) {
   const others = pool.filter((i) => i.id !== currentId);
   const from = others.length ? others : pool;
   return from[Math.floor(random() * from.length)];
-}
-
-// Cheap "up next" guess from logged episodes only (no network). The sheet checks TMDB for the exact one.
-export function upNextGuess(item, episodes) {
-  if (isMovie(item)) return null;
-  const last = lastWatchedEpisode(episodes || []);
-  return last ? `S${last.season} E${last.num + 1}` : 'S1 E1';
 }
